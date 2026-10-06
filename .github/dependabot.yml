@@ -1,0 +1,24 @@
+# Small dependency trees matter here. Keeping them current is cheaper than
+# auditing them after a CVE lands.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - "/api"
+      - "/sdk/go"
+      - "/sdk/conformance"
+      - "/sdk/examples/minimal"
+      - "/plugins/keycloak"
+      - "/plugins/github"
+      - "/plugins/awsiam"
+      - "/tools"
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

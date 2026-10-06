@@ -1,0 +1,82 @@
+# Lint policy. Boring on purpose: every enabled linter must have a reason a
+# reviewer can state in one line.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose      # leaked HTTP bodies against a source API are a real failure mode here
+    - errorlint      # errors.Is/As discipline; error identity matters across the plugin boundary
+    - gocritic
+    - gosec
+    - misspell
+    - noctx          # every outbound call to a source must be cancellable
+    - nolintlint     # a //nolint without an explanation is a silent exception
+    - revive
+    - sqlclosecheck
+    - rowserrcheck
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+    gosec:
+      excludes:
+        - G104  # duplicate of errcheck
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # Test code may hard-code credentials for fixtures and may skip the
+      # hardening rules that matter in shipped binaries.
+      - path: _test\.go
+        linters:
+          - gosec
+          - noctx
+      # Generated code is not ours to style. Scoped to the generated files
+      # themselves, not to all of api/, which also holds hand-written docs.
+      - path: (\.pb\.go|\.pb\.gw\.go|_grpc\.pb\.go|\.gen\.go)$
+        linters:
+          - revive
+          - gocritic
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - go.acciew.io/collector

@@ -1,0 +1,41 @@
+{
+  "total_count": 3,
+  "installations": [
+    {
+      "app_id": 200001,
+      "app_slug": "app01",
+      "created_at": "2024-01-15T00:00:00.000Z",
+      "id": 300001,
+      "permissions": {
+        "members": "read",
+        "metadata": "read"
+      },
+      "repository_selection": "all",
+      "target_type": "Organization"
+    },
+    {
+      "app_id": 200002,
+      "app_slug": "app02",
+      "created_at": "2024-03-01T00:00:00.000Z",
+      "id": 300002,
+      "permissions": {
+        "contents": "read",
+        "metadata": "read",
+        "pull_requests": "write"
+      },
+      "repository_selection": "selected",
+      "target_type": "Organization"
+    },
+    {
+      "app_id": 200003,
+      "app_slug": "app03",
+      "created_at": "2024-06-01T00:00:00.000Z",
+      "id": 300003,
+      "permissions": {
+        "metadata": "read"
+      },
+      "repository_selection": "all",
+      "target_type": "Organization"
+    }
+  ]
+}

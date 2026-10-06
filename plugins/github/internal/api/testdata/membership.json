@@ -1,0 +1,43 @@
+{
+  "direct_membership": true,
+  "enterprise_teams_providing_indirect_membership": [],
+  "organization": {
+    "avatar_url": "redacted",
+    "description": "An example organization",
+    "events_url": "https://api.github.com/orgs/acme-org/events",
+    "hooks_url": "https://api.github.com/orgs/acme-org/hooks",
+    "id": 9000000030,
+    "issues_url": "https://api.github.com/orgs/acme-org/issues",
+    "login": "acme-org",
+    "members_url": "https://api.github.com/orgs/acme-org/members{/member}",
+    "node_id": "redacted",
+    "public_members_url": "https://api.github.com/orgs/acme-org/public_members{/member}",
+    "repos_url": "https://api.github.com/orgs/acme-org/repos",
+    "url": "https://api.github.com/orgs/acme-org"
+  },
+  "organization_url": "https://api.github.com/orgs/acme-org",
+  "role": "member",
+  "state": "active",
+  "url": "https://api.github.com/orgs/acme-org/memberships/user03",
+  "user": {
+    "avatar_url": "redacted",
+    "events_url": "https://api.github.com/users/user03/events{/privacy}",
+    "followers_url": "https://api.github.com/users/user03/followers",
+    "following_url": "https://api.github.com/users/user03/following{/other_user}",
+    "gists_url": "https://api.github.com/users/user03/gists{/gist_id}",
+    "gravatar_id": "redacted",
+    "html_url": "https://github.com/user03",
+    "id": 9000000008,
+    "login": "user03",
+    "node_id": "redacted",
+    "organizations_url": "https://api.github.com/users/user03/orgs",
+    "received_events_url": "https://api.github.com/users/user03/received_events",
+    "repos_url": "https://api.github.com/users/user03/repos",
+    "site_admin": false,
+    "starred_url": "https://api.github.com/users/user03/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/user03/subscriptions",
+    "type": "User",
+    "url": "https://api.github.com/users/user03",
+    "user_view_type": "public"
+  }
+}

@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+// Kind-agnostic handshake. Every Acciew plugin binary, whatever it does,
+// serves this service. The host calls Hello before it knows what the plugin
+// is, then dials the kind-specific service the plugin offered.
+//
+// Versions independently of every kind. Adding a kind is a new package under
+// api/<kind>/v1 plus a new string in Offering.kind; never a change here.
+//
+// Lint: buf STANDARD. PACKAGE_DIRECTORY_MATCH is excepted for this file
+// (package acciew.plugin.v1 lives under api/plugin/v1).
+package acciew.plugin.v1;
+
+option go_package = "go.acciew.io/collector/api/plugin/v1;pluginv1";
+
+// HandshakeService is the one service every plugin binary must expose.
+service HandshakeService {
+  // Hello exchanges what each side can speak. Called once per plugin launch.
+  rpc Hello(HelloRequest) returns (HelloResponse);
+}
+
+// HelloRequest tells the plugin what the host can speak.
+message HelloRequest {
+  // Every (kind, version) the host can speak, so a plugin that cannot agree
+  // can log a message naming both sides' ranges.
+  repeated Offering host_supports = 1;
+  // Host build version, for the plugin's logs.
+  string host_version = 2;
+}
+
+// HelloResponse tells the host what the plugin is and what it can speak.
+message HelloResponse {
+  // Stable plugin identifier, e.g. "keycloak". Not the configured instance.
+  string plugin_name = 1;
+  // Plugin build version, semver.
+  string plugin_version = 2;
+  // Every (kind, version) this binary implements. A binary may offer several
+  // kinds and several versions of one kind.
+  repeated Offering offerings = 3;
+}
+
+// Offering is one kind at one contract major version.
+message Offering {
+  // Registered kind name. Defined now: "collector". Reserved for later
+  // contracts and never to be reused for anything else: "notifier",
+  // "exporter", "enricher", "revoker".
+  string kind = 1;
+  // Major version of that kind's contract: 1 for acciew.collector.v1.
+  uint32 protocol_version = 2;
+}

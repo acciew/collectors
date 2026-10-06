@@ -1,0 +1,22 @@
+[
+  {
+    "id": 9000000004,
+    "login": "user01",
+    "type": "User"
+  },
+  {
+    "id": 9000000033,
+    "login": "user02",
+    "type": "User"
+  },
+  {
+    "id": 9000000008,
+    "login": "user03",
+    "type": "User"
+  },
+  {
+    "id": 9000000013,
+    "login": "user04",
+    "type": "User"
+  }
+]

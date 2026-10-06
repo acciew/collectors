@@ -1,0 +1,6 @@
+{
+  "default_repository_permission": "write",
+  "id": 9000000030,
+  "login": "acme-org",
+  "type": "Organization"
+}

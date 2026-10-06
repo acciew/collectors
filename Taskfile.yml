@@ -1,0 +1,264 @@
+version: "3"
+
+# Every task here must work from a fresh `git clone` with nothing installed but
+# Go and Docker. Tools are pinned in tools/go.mod and built into ./bin.
+
+# Anything touching ./tools sets GOWORK=off per command: build tooling must not
+# take part in dependency resolution for shipped code, and go.work would pull it
+# in otherwise.
+
+vars:
+  BIN: "{{.ROOT_DIR}}/bin"
+  COVER_DIR: "{{.ROOT_DIR}}/.cover"
+  MODULE: go.acciew.io/collector
+  # Workspace module directories, read from go.work so this never drifts.
+  MODULE_DIRS:
+    sh: go list -m -f '{{`{{.Dir}}`}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  tools:
+    desc: Build pinned developer tools into ./bin
+    cmds:
+      - mkdir -p {{.BIN}}
+      - GOWORK=off GOBIN={{.BIN}} go -C {{.ROOT_DIR}}/tools install tool
+    sources:
+      - tools/go.mod
+      - tools/go.sum
+    generates:
+      - "{{.BIN}}/golangci-lint"
+      - "{{.BIN}}/govulncheck"
+      - "{{.BIN}}/task"
+
+  fmt:
+    desc: Format all Go code
+    deps: [tools]
+    cmds:
+      - for: { var: MODULE_DIRS }
+        cmd: cd {{.ITEM}} && {{.BIN}}/golangci-lint fmt --config {{.ROOT_DIR}}/.golangci.yml ./...
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off {{.BIN}}/golangci-lint fmt --config {{.ROOT_DIR}}/.golangci.yml ./...
+
+  fmt:check:
+    desc: Fail if any Go code is unformatted
+    deps: [tools]
+    cmds:
+      - for: { var: MODULE_DIRS }
+        cmd: cd {{.ITEM}} && {{.BIN}}/golangci-lint fmt --diff --config {{.ROOT_DIR}}/.golangci.yml ./...
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off {{.BIN}}/golangci-lint fmt --diff --config {{.ROOT_DIR}}/.golangci.yml ./...
+
+  lint:
+    desc: Run all linters, including the import boundary check
+    deps: [tools]
+    cmds:
+      - task: lint:imports
+      - for: { var: MODULE_DIRS }
+        cmd: cd {{.ITEM}} && {{.BIN}}/golangci-lint run --config {{.ROOT_DIR}}/.golangci.yml ./...
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off {{.BIN}}/golangci-lint run --config {{.ROOT_DIR}}/.golangci.yml ./...
+
+  lint:imports:
+    desc: Fail if any import crosses a boundary declared in importlint.json
+    run: once
+    cmds:
+      - GOWORK=off go -C {{.ROOT_DIR}}/tools run ./importlint -policy {{.ROOT_DIR}}/importlint.json -root {{.ROOT_DIR}}
+
+  test:
+    desc: Run unit tests for every module, writing coverage into .cover/
+    cmds:
+      - rm -rf {{.COVER_DIR}} && mkdir -p {{.COVER_DIR}}
+      - for: { var: MODULE_DIRS }
+        cmd: |
+          set -eu
+          slug=$(printf '%s' '{{.ITEM}}' | sed 's|^{{.ROOT_DIR}}$|root|; s|^{{.ROOT_DIR}}/||; s|/|_|g')
+          cd '{{.ITEM}}'
+          # -coverpkg so that a test counts toward the code it actually
+          # exercises, in another package and in another module. The reference
+          # collector's conformance test lives in its own module, as a third
+          # party's would, and drives the whole conformance suite; without this
+          # the suite's gate would read as though that code were untested.
+          go test -race -covermode=atomic -coverpkg={{.MODULE}}/... -coverprofile="{{.COVER_DIR}}/$slug.cov" ./...
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off go test -race ./...
+      - task: cover:merge
+
+  cover:merge:
+    internal: true
+    cmds:
+      - |
+        set -eu
+        printf 'mode: atomic\n' > {{.COVER_DIR}}/coverage.out
+        for f in {{.COVER_DIR}}/*.cov; do
+          if [ -f "$f" ]; then
+            tail -n +2 "$f" >> {{.COVER_DIR}}/coverage.out
+          fi
+        done
+
+  cover:gate:
+    desc: Enforce the coverage minimums in .coverage-gates
+    cmds:
+      - >-
+        GOWORK=off go -C {{.ROOT_DIR}}/tools run ./covergate
+        -profile {{.COVER_DIR}}/coverage.out
+        -gates {{.ROOT_DIR}}/.coverage-gates
+        -module {{.MODULE}}
+        -root {{.ROOT_DIR}}
+
+  cover:html:
+    desc: Open the merged coverage report in a browser
+    deps: [test]
+    cmds:
+      - go tool cover -html={{.COVER_DIR}}/coverage.out
+
+  build:
+    desc: Build every collector and the reference collector into ./bin
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        for dir in {{.ROOT_DIR}}/plugins/*/; do
+          go build -C "$dir" -o {{.BIN}}/acciew-collector-"$(basename "$dir")" .
+        done
+      - go build -C {{.ROOT_DIR}}/sdk/examples/minimal -o {{.BIN}}/acciew-collector-minimal .
+
+  vuln:
+    desc: Scan every module for known vulnerabilities, tools included
+    deps: [tools]
+    cmds:
+      - for: { var: MODULE_DIRS }
+        cmd: cd {{.ITEM}} && {{.BIN}}/govulncheck ./...
+      # tools/ is the largest dependency tree in the repo. Dependabot watches
+      # it; without this line govulncheck did not.
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off {{.BIN}}/govulncheck ./...
+
+  proto:lint:
+    desc: Lint the protobuf contract
+    deps: [tools]
+    cmds:
+      - cd {{.ROOT_DIR}}/api && {{.BIN}}/buf lint
+
+  proto:breaking:
+    desc: Fail if the contract breaks compatibility with origin/main
+    deps: [tools]
+    vars:
+      AGAINST: '{{.AGAINST | default ".git#branch=origin/main,subdir=api"}}'
+    cmds:
+      # This is what makes the promise in sdk/go/README.md mechanical rather
+      # than aspirational: field numbers are never reused, and nothing in a
+      # released major version changes in a way that breaks a consumer.
+      #
+      # Run from the repo root: the .git reference is resolved relative to the
+      # working directory, so running this inside api/ looks for api/.git.
+      #
+      # buf treats a baseline with no .proto files as an error rather than as
+      # an empty baseline, which would make the commit that first adds the
+      # contract impossible to merge. That one message is tolerated; every
+      # other failure is a real one.
+      - |
+        set -eu
+        cd {{.ROOT_DIR}}
+        out=$({{.BIN}}/buf breaking api --against '{{.AGAINST}}' 2>&1) && status=0 || status=$?
+        if [ "$status" -eq 0 ]; then
+          echo "proto:breaking: ok"
+          exit 0
+        fi
+        case "$out" in
+          *"had no .proto files"*)
+            echo "proto:breaking: no contract on the baseline yet, nothing to break"
+            exit 0
+            ;;
+        esac
+        printf '%s\n' "$out" >&2
+        exit "$status"
+
+  proto:gen:
+    desc: Regenerate Go from the protobuf contract
+    deps: [tools]
+    cmds:
+      - cd {{.ROOT_DIR}}/api && PATH="{{.BIN}}:$PATH" {{.BIN}}/buf generate
+
+  proto:check:
+    desc: Fail if the generated Go is out of date with the contract
+    deps: [tools]
+    cmds:
+      # A stale .pb.go compiles perfectly well and silently disagrees with the
+      # schema that is meant to be the source of truth.
+      - |
+        set -eu
+        cd {{.ROOT_DIR}}
+        # Digest the files rather than comparing `git status`: status says
+        # which paths changed, not what is in them, so regenerating an
+        # already-modified or untracked file leaves the status line identical
+        # and the check passes on stale output.
+        digest() { find api -name '*.pb.go' -type f -exec shasum {} + 2>/dev/null | sort; }
+        before=$(digest)
+        {{.BIN}}/task proto:gen >/dev/null
+        after=$(digest)
+        if [ "$before" != "$after" ]; then
+          echo 'generated code is out of date; run `task proto:gen` and commit the result:' >&2
+          git --no-pager diff --stat -- 'api' >&2 || true
+          exit 1
+        fi
+        echo "proto:check: ok"
+
+  tidy:
+    desc: Tidy every go.mod
+    cmds:
+      - for: { var: MODULE_DIRS }
+        cmd: cd {{.ITEM}} && go mod tidy
+      - cd {{.ROOT_DIR}}/tools && GOWORK=off go mod tidy
+
+  tidy:check:
+    desc: Fail if any go.mod or go.sum is untidy
+    deps: [tools]
+    cmds:
+      # `git diff --exit-code` cannot see a go.sum that tidy has just created,
+      # and a pathspec of '**/go.sum' does not match one at the repo root, so
+      # the obvious form of this check misses both. Comparing porcelain status
+      # before and after catches created files, and comparing rather than
+      # asserting cleanliness means a working tree with unrelated go.mod edits
+      # does not fail the check locally.
+      - |
+        set -eu
+        cd {{.ROOT_DIR}}
+        # Digest the files rather than comparing `git status`: status says
+        # which paths changed, not what is in them, so tidying an
+        # already-modified go.mod leaves the status line identical and the
+        # check passes on an untidy tree.
+        digest() {
+          find . -name go.mod -o -name go.sum -o -name go.work -o -name go.work.sum \
+            | grep -v '/\.git/' | sort | xargs shasum 2>/dev/null
+        }
+        before=$(digest)
+        {{.BIN}}/task tidy >/dev/null
+        after=$(digest)
+        if [ "$before" != "$after" ]; then
+          echo 'go.mod or go.sum is untidy; run `task tidy` and commit the result:' >&2
+          git --no-pager diff --stat -- '*go.mod' '*go.sum' 'go.work' 'go.work.sum' >&2 || true
+          exit 1
+        fi
+        echo "tidy:check: ok"
+
+  ci:
+    desc: Everything CI runs, in the order CI runs it
+    cmds:
+      # First and on its own: a boundary break should never be buried in lint
+      # output. CI runs it as its own step for the same reason.
+      - task: lint:imports
+      - task: proto:lint
+      - task: proto:breaking
+      - task: proto:check
+      - task: fmt:check
+      - task: lint
+      - task: test
+      - task: cover:gate
+      - task: build
+      - task: vuln
+      - task: tidy:check
+
+  clean:
+    desc: Remove build and coverage output
+    cmds:
+      - rm -rf {{.BIN}} {{.COVER_DIR}}

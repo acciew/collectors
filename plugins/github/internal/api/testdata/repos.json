@@ -1,0 +1,23 @@
+[
+  {
+    "archived": false,
+    "full_name": "acme-org/repo01",
+    "id": 9000000012,
+    "name": "repo01",
+    "private": true
+  },
+  {
+    "archived": false,
+    "full_name": "acme-org/repo02",
+    "id": 9000000015,
+    "name": "repo02",
+    "private": true
+  },
+  {
+    "archived": true,
+    "full_name": "acme-org/repo04",
+    "id": 9000000044,
+    "name": "repo04",
+    "private": true
+  }
+]

@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `buf breaking` compares the contract against origin/main, so the
+          # baseline has to be in the clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            **/go.sum
+            go.work.sum
+
+      # Tools are pinned in tools/go.mod. CI must not install anything the
+      # developer's machine does not also install, or CI and local diverge.
+      - name: Build pinned tools
+        run: |
+          mkdir -p bin
+          GOWORK=off GOBIN="$PWD/bin" go -C tools install tool
+          echo "$PWD/bin" >> "$GITHUB_PATH"
+
+      # The import rules: the SDK imports no collector, and no collector imports
+      # another. Run it first, and on its own, so a boundary break is never
+      # buried in lint output.
+      - name: Import boundaries
+        run: ./bin/task lint:imports
+
+      # The contract is the source of truth. A stale .pb.go compiles fine and
+      # silently disagrees with it, and a breaking change to a released
+      # contract is a trust breach rather than a release note.
+      - name: Contract lint
+        run: ./bin/task proto:lint
+
+      - name: Contract compatibility
+        run: ./bin/task proto:breaking
+
+      - name: Generated code is current
+        run: ./bin/task proto:check
+
+      - name: Formatting
+        run: ./bin/task fmt:check
+
+      - name: Lint
+        run: ./bin/task lint
+
+      - name: Test
+        run: ./bin/task test
+
+      - name: Coverage gates
+        run: ./bin/task cover:gate
+
+      - name: Build
+        run: ./bin/task build
+
+      - name: Vulnerability scan
+        run: ./bin/task vuln
+
+      # A go.mod that is not tidy makes every later diff noisy and hides real
+      # dependency changes during review.
+      - name: go.mod is tidy
+        run: ./bin/task tidy:check

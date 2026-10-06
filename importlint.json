@@ -1,0 +1,86 @@
+{
+  "module": "go.acciew.io/collector",
+  "rules": [
+    {
+      "name": "sdk-must-not-import-plugins",
+      "why": "The SDK is public surface for plugin authors and is source-agnostic. If it can import a plugin, every collector inherits that plugin's dependencies and the SDK stops being something a third party can build against alone.",
+      "from": [
+        "sdk/"
+      ],
+      "denyDirs": [
+        "plugins/"
+      ]
+    },
+    {
+      "name": "sdk-must-not-import-source-clients",
+      "why": "The SDK is source-agnostic. A source client here would put a Keycloak dependency in the build of every plugin anyone ever writes.",
+      "from": [
+        "sdk/"
+      ],
+      "deny": [
+        "github.com/Nerzal/gocloak",
+        "github.com/keycloak/",
+        "github.com/google/go-github",
+        "github.com/bradleyfalzon/ghinstallation",
+        "github.com/aws/aws-sdk-go",
+        "github.com/aws/aws-sdk-go-v2"
+      ]
+    },
+    {
+      "name": "contract-module-stays-standalone",
+      "why": "api/ holds generated contract types. Every collector depends on it, so it must depend on nothing of ours.",
+      "from": [
+        "api/"
+      ],
+      "denyDirs": [
+        "plugins/",
+        "sdk/"
+      ]
+    },
+    {
+      "name": "tools-are-standalone",
+      "why": "Build tooling must not depend on shipped code, or a broken build becomes a broken linter and the failure is unreadable.",
+      "from": [
+        "tools/"
+      ],
+      "denyDirs": [
+        "api/",
+        "plugins/",
+        "sdk/"
+      ]
+    },
+    {
+      "name": "plugin-keycloak-does-not-import-other-plugins",
+      "from": [
+        "plugins/keycloak/"
+      ],
+      "denyDirs": [
+        "plugins/github/",
+        "plugins/awsiam/"
+      ],
+      "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
+    },
+    {
+      "name": "plugin-github-does-not-import-other-plugins",
+      "from": [
+        "plugins/github/"
+      ],
+      "denyDirs": [
+        "plugins/keycloak/",
+        "plugins/awsiam/"
+      ],
+      "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
+    },
+    {
+      "name": "plugin-awsiam-does-not-import-other-plugins",
+      "from": [
+        "plugins/awsiam/"
+      ],
+      "denyDirs": [
+        "plugins/keycloak/",
+        "plugins/github/"
+      ],
+      "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
+    }
+  ]
+}

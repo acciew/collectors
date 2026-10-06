@@ -1,0 +1,53 @@
+# Line-coverage minimums, enforced by `task cover:gate` and by CI.
+#
+# Gate the logic that decides what a collector reports, not the glue around
+# it. A number on an HTTP adapter makes people write tests for the wrong thing.
+#
+# Format: <module-relative-package-path> <minimum-percent>. Subpackages are
+# included. Paths are module-relative so that the module path lives in exactly
+# one place outside go.mod files.
+#
+# Generated code (*.pb.go, *.gen.go, zz_generated.*) never counts: coverage on
+# it measures the generator, not us.
+#
+# A gate whose packages have no statements yet passes with a printed notice.
+# A gate pointing at a directory that does not exist is an error, so renaming
+# a package cannot quietly switch its gate off.
+
+# The contract's semantic rules. Everything protobuf cannot express is here,
+# and the SDK, the host and the conformance suite all rely on this one
+# implementation being right.
+api/collector/v1   90
+
+# What a plugin author writes against. A mistake here is a mistake in every
+# collector anyone ever writes, ours and theirs.
+sdk/go/collector   90
+
+# The suite a third party runs. A check that does not catch what it claims to
+# catch is worse than no check, so its own tests drive it with a collector
+# that lies in one specific way each time.
+sdk/conformance    85
+
+# The Keycloak collector's resolution logic. A bug here produces a grant that
+# looks right and is not, which is the expensive kind: nothing downstream can
+# tell that "alice has admin" was derived wrongly.
+plugins/keycloak/internal/collect 85
+plugins/keycloak/internal/admin   75
+
+# The GitHub collector. Its resolution is where the four routes to a
+# repository come together, and a mistake there produces a grant that looks
+# right and is not, the same class of bug as the Keycloak collector's, in a
+# source that states less of the answer itself.
+plugins/github/internal/collect 80
+plugins/github/internal/api     80
+
+# The AWS collector. Its mapping is where a role becomes both a principal and
+# an entitlement, and where AWS's sentinels have to stay distinguishable from
+# a definite answer: read "no information" as "never used" and the account
+# root reports as dormant.
+#
+# The iam package is lower because most of it is the AWS SDK adapter, which
+# cannot be exercised without an account. What is gated there is the parsing
+# with real logic in it: trust policies and the credential report.
+plugins/awsiam/internal/collect 85
+plugins/awsiam/internal/iam     50

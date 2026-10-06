@@ -1,0 +1,25 @@
+version: v2
+
+modules:
+  - path: .
+
+lint:
+  use:
+    - STANDARD
+  except:
+    # STANDARD wants package acciew.collector.v1 to live in
+    # acciew/collector/v1. The directory is fixed as
+    # api/collector/v1, and a namespaced proto package is worth more than a
+    # matching path: the service's full name travels on the wire and appears
+    # in any registry that mixes protos from several vendors.
+    # "collector.v1.CollectorService" is a name anyone could collide with;
+    # "acciew.collector.v1.CollectorService" is not.
+    - PACKAGE_DIRECTORY_MATCH
+
+breaking:
+  # FILE is the strictest category: it catches renames and moves that break
+  # generated code, not only wire compatibility. Within a contract major
+  # version we promise no breaking changes of any kind, so anything weaker
+  # would let us break the policy in sdk/go/README.md and stay green.
+  use:
+    - FILE

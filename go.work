@@ -1,0 +1,29 @@
+go 1.26.0
+
+toolchain go1.26.8
+
+// One module per independently versioned artefact. Every module is tagged
+// together, from one commit, so one version number names one state of all of them.
+//
+//   ./api        the collector contract: protobuf types and the handshake. Depends on nothing of ours.
+//   ./sdk/go     the plugin SDK. What a third-party collector author imports.
+//   ./sdk/conformance
+//                the conformance suite an author runs against their collector.
+//   ./sdk/examples/minimal
+//                the reference collector. Its own module on purpose: it proves the SDK is
+//                usable from outside this repository.
+//   ./plugins/*  first-party collectors, built exactly as a third party would build them.
+//
+// The root go.mod is tooling-only: it exists so the import rules have a module path to
+// resolve against, and holds no packages. ./tools is deliberately NOT in this workspace:
+// build tooling must not take part in dependency resolution for shipped code. Task
+// targets invoke it with GOWORK=off.
+use (
+	./api
+	./plugins/awsiam
+	./plugins/github
+	./plugins/keycloak
+	./sdk/conformance
+	./sdk/examples/minimal
+	./sdk/go
+)

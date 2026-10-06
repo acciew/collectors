@@ -1,0 +1,945 @@
+syntax = "proto3";
+
+// Acciew collector contract, version 1.
+//
+// Design review: docs/design/three-source-mapping.md (requirements R1-R15).
+// Shape decisions: docs/adr/0006-collector-contract-shape.md.
+// Coarse AWS entitlements: docs/adr/0003-coarse-entitlements-for-aws-iam.md.
+//
+// Transport-neutral. This file is a schema; nothing in it assumes gRPC.
+//
+// Compatibility (sdk/go/README.md): field numbers are never reused; a removed
+// field's number goes to `reserved` in the same commit; unknown fields and
+// unknown non-zero enum values are preserved and tolerated, never rejected.
+// `reserved` statements record fields considered and rejected; they are
+// permanent under buf's FILE breaking category, and future fields take new
+// numbers rather than claiming a reserved one.
+//
+// Zero-valued enums. Every enum has <NAME>_UNSPECIFIED = 0 because proto3 and
+// buf require it. On the wire it is INVALID everywhere, with one stated
+// exception: ScopeProbe.activity and ScopeOutcome.activity are meaningful only
+// when Capabilities.activity is true, so a plugin that produces no activity
+// data leaves them unset. Nothing else in this file may be zero.
+//
+// Where "we do not know" is an honest answer, an explicit _UNKNOWN value
+// exists and is never the zero value.
+//
+// validate.go in this package is the single implementation of that rule and of
+// every other rule protobuf cannot express. It is called by the SDK before an
+// emit, by the host on receipt -- which is the load-bearing one, since a
+// plugin written against another transport in another language never touches
+// our SDK -- and by the conformance suite. The SDK, host and suite are being
+// built; until each lands, its call site is intent rather than fact.
+//
+// Lint: buf STANDARD. PACKAGE_DIRECTORY_MATCH is excepted for this file.
+package acciew.collector.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "go.acciew.io/collector/api/collector/v1;collectorv1";
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+// CollectorService is the "collector" kind at protocol version 1.
+service CollectorService {
+  // Describe returns static self-description: capabilities, declared
+  // limitations, activity signals. Takes no config; anything
+  // config-dependent belongs in TestConnection.
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+
+  // ValidateConfig checks the opaque config document plugin-side. It never
+  // contacts the source. R6.
+  rpc ValidateConfig(ValidateConfigRequest) returns (ValidateConfigResponse);
+
+  // TestConnection contacts the source, enumerates the scopes the
+  // credentials reach, and reports reachability and per-scope activity
+  // availability. R7.
+  rpc TestConnection(TestConnectionRequest) returns (TestConnectionResponse);
+
+  // Collect streams the inventory. Resumable by cursor. A stream is
+  // successful only if its last event is a Completion with VERDICT_COMPLETE;
+  // the host treats every other ending as an error. R5.
+  rpc Collect(CollectRequest) returns (stream CollectResponse);
+
+  // Revoke is DECLARED, NOT IMPLEMENTED in this release. Every collector
+  // answers REVOKE_OUTCOME_NOT_SUPPORTED and declares capabilities.revoke =
+  // false; the conformance suite fails a plugin that does otherwise. The
+  // shape is fixed now so a later implementation is not a contract change.
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+}
+
+// ---------------------------------------------------------------------------
+// Describe  (R13)
+// ---------------------------------------------------------------------------
+
+// DescribeRequest is empty on purpose: a message rather than
+// google.protobuf.Empty so fields can be added without a breaking change.
+message DescribeRequest {}
+
+// DescribeResponse is what the host degrades against. It never assumes.
+message DescribeResponse {
+  // Must be "collector". Redundant with the handshake on purpose: a recorded
+  // Describe is self-identifying without the transport around it.
+  string kind = 1;
+  // Must be 1 for this package. Cross-checked against the handshake offering.
+  uint32 protocol_version = 2;
+  // Stable plugin identifier, e.g. "keycloak". Equals HelloResponse.plugin_name.
+  string name = 3;
+  // Plugin build version, semver.
+  string version = 4;
+  // One paragraph, shown by `acciew plugins list`.
+  string description = 5;
+  // What the plugin can do.
+  Capabilities capabilities = 6;
+  // Limitations every consumer must see. Required non-empty when
+  // capabilities.fidelities contains FIDELITY_COARSE, so that a coarse
+  // entitlement model is stated in the contract and not only in a README.
+  repeated Limitation limitations = 7;
+  // Every distinct Activity.signal value the plugin may emit. R4.
+  repeated ActivitySignal activity_signals = 8;
+
+  // 9: config_schema_json, an advisory JSON Schema for the config. Rejected:
+  //    nothing renders it in this release, and it would be a second source of
+  //    truth beside ValidateConfig.
+  reserved 9;
+}
+
+// Capabilities uses bools whose false default is the safe direction: an unset
+// capability reads as "cannot".
+message Capabilities {
+  // Whether the plugin may emit Activity events. If false it emits none.
+  bool activity = 1;
+  // Whether Revoke is implemented. MUST be false in this release.
+  bool revoke = 2;
+  // Every Fidelity the plugin may put on an edge. Emitting one that is not
+  // listed fails conformance.
+  repeated Fidelity fidelities = 3;
+  // Every NodeType the plugin may emit. Same rule.
+  repeated NodeType node_types = 4;
+  // Every EdgeType the plugin may emit. Same rule.
+  repeated EdgeType edge_types = 5;
+
+  // 6: incremental. Rejected: there is no request-side mechanism in v1, and
+  //    none of the three first-party sources can fetch less than a full
+  //    population (R10).
+  // 7: resume. Rejected: resume is mandatory, not a capability (R5).
+  reserved 6, 7;
+
+  // Resumption is mandatory — every plugin honours CollectRequest.resume_from
+  // and emits Checkpoints — so it is not a capability and never will be under
+  // this name.
+  reserved "resume", "resumable";
+}
+
+// Limitation is a declared limit on what this plugin's data means.
+message Limitation {
+  // Plugin-defined machine code, e.g. "aws.coarse-entitlements".
+  string code = 1;
+  // One or two sentences a reviewer can read.
+  string summary = 2;
+  // Optional link to the plugin's own documentation.
+  string detail_url = 3;
+}
+
+// ActivitySignal is one kind of activity evidence the plugin can produce.
+message ActivitySignal {
+  // Source-vocabulary name, e.g. "login_event", "role_last_used",
+  // "password_last_used". Not normalised across sources. R4, R8.
+  string name = 1;
+  // What the signal means and what it misses, for a reviewer.
+  string description = 2;
+  // Lag the source documents for this signal, if any.
+  google.protobuf.Duration typical_lag = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Config  (R6)
+// ---------------------------------------------------------------------------
+
+// ValidateConfigRequest carries the opaque config document.
+//
+// Config is a UTF-8 JSON document. The core stores, hashes, logs and passes
+// it through; it never interprets a key. JSON rather than fully opaque bytes
+// because ConfigIssue.field needs an addressing scheme (RFC 6901) and the CLI
+// must be able to pretty-print it.
+//
+// Secret material is REFERENCED, never embedded. A secret-valued field holds
+// a reference such as "env:GITHUB_TOKEN" or "file:/var/run/secrets/kc" that
+// the plugin resolves in its own process. This is what lets the core log a
+// config without per-plugin redaction rules. The core cannot verify it; the
+// SDK's secret type refuses literals and the authoring guide explains why.
+message ValidateConfigRequest {
+  // The JSON config document.
+  bytes config = 1;
+}
+
+// ValidateConfigResponse reports every finding about the document.
+message ValidateConfigResponse {
+  // Empty means valid. There is deliberately no `bool valid`: it would be a
+  // second source of truth. Valid iff no issue has SEVERITY_ERROR.
+  repeated ConfigIssue issues = 1;
+}
+
+// ConfigIssue is one finding about the config document.
+message ConfigIssue {
+  // RFC 6901 JSON Pointer into the document, e.g. "/realms/0". The empty
+  // string addresses the whole document: malformed JSON, missing sections.
+  string field = 1;
+  // ERROR blocks use; WARNING and INFO do not.
+  Severity severity = 2;
+  // Plugin-defined machine code, e.g. "keycloak.realm.unknown".
+  string code = 3;
+  // Human-readable explanation.
+  string message = 4;
+}
+
+// Severity of a ConfigIssue or a Diagnostic.
+enum Severity {
+  // Invalid on the wire.
+  SEVERITY_UNSPECIFIED = 0;
+  // Blocks the operation it is attached to.
+  SEVERITY_ERROR = 1;
+  // Does not block; should be shown.
+  SEVERITY_WARNING = 2;
+  // Informational.
+  SEVERITY_INFO = 3;
+}
+
+// ---------------------------------------------------------------------------
+// TestConnection  (R7)
+// ---------------------------------------------------------------------------
+
+// TestConnectionRequest carries the opaque config document.
+message TestConnectionRequest {
+  // The JSON config document.
+  bytes config = 1;
+}
+
+// TestConnectionResponse reports what the credentials actually reach.
+message TestConnectionResponse {
+  // Every scope the plugin could discover, reachable or not. The CLI shows
+  // `name` and passes `scope.scope` into CollectRequest.scopes.
+  repeated ScopeProbe scopes = 1;
+  // Anything worth recording that is not per-scope.
+  repeated Diagnostic diagnostics = 2;
+}
+
+// ScopeProbe is one discovered scope and whether the credentials reach it.
+message ScopeProbe {
+  // Key with type NODE_TYPE_SCOPE and scope == id.
+  Key scope = 1;
+  // Human name: realm name, organization login, account alias.
+  string name = 2;
+  // False by default, which is the safe direction: unset reads as "not
+  // reached".
+  bool reachable = 3;
+  // Required when reachable is false.
+  Error error = 4;
+  // Whether Activity can be produced for identities in this scope. Required
+  // when capabilities.activity is true, and one of the two fields in this
+  // file where the zero value is legitimate: a plugin that produces no
+  // activity data leaves it unset. Keycloak: event storage per realm.
+  ActivityAvailability activity = 5;
+  // Why activity is unavailable, in terms an operator can act on. "Event
+  // storage is off for this realm" tells somebody what to turn on; the enum
+  // alone tells them only that it did not work. Empty when activity is
+  // available.
+  string activity_note = 6;
+}
+
+// ActivityAvailability says whether a scope can yield activity data at all.
+enum ActivityAvailability {
+  // Invalid on the wire.
+  ACTIVITY_AVAILABILITY_UNSPECIFIED = 0;
+  // The source records the signal for this scope.
+  ACTIVITY_AVAILABILITY_AVAILABLE = 1;
+  // The source does not, e.g. Keycloak event storage disabled.
+  ACTIVITY_AVAILABILITY_UNAVAILABLE = 2;
+  // The plugin could not find out — the call that would have answered
+  // failed, typically on a permission. Distinct from UNAVAILABLE, which is
+  // the source saying no: this is nobody having asked successfully, and it
+  // sends an operator to check a credential rather than to switch something
+  // on. Unset still reads as UNAVAILABLE, which stays the safe default.
+  ACTIVITY_AVAILABILITY_UNDETERMINED = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Collect  (R5, R12)
+// ---------------------------------------------------------------------------
+
+// CollectRequest asks for a full population, optionally resumed and capped.
+message CollectRequest {
+  // The JSON config document.
+  bytes config = 1;
+  // Stable scope ids (Key.scope values) to collect. Empty means every scope
+  // the credentials reach. A discovered scope that is not collected makes the
+  // verdict INCOMPLETE regardless of why; a caller who wants fewer names them.
+  repeated string scopes = 2;
+  // Cursor from a previous stream's Checkpoint or Completion.resume_cursor.
+  // The plugin holds no state between processes: everything needed to resume
+  // is in the token. A plugin that cannot use the token MAY restart from the
+  // beginning and MUST emit a Diagnostic with code "cursor.rejected".
+  Cursor resume_from = 3;
+  // Host-imposed stopping point. The plugin stops at the next checkpoint
+  // boundary after either limit and ends with Completion{INCOMPLETE,
+  // BUDGET_EXHAUSTED, resume_cursor}. Unset means no limit.
+  Budget budget = 4;
+  // The plugin emits some event at least this often while working. Lets the
+  // host tell "slow" from "stuck" without reading logs. Unset means the host
+  // default.
+  google.protobuf.Duration heartbeat_interval = 5;
+
+  // 6: an activity include/exclude mode, wanted for a --no-activity flag.
+  //    Deferred until a caller exists.
+  reserved 6;
+
+  // A collector reports the source as it is now. There is no as-of parameter,
+  // and "collect what changed since T" would be a delta stream, which R10
+  // forbids trusting. These names are reserved so that adding one is a
+  // compile error rather than a design discussion nobody remembers having.
+  reserved "as_of", "at", "point_in_time", "since", "delta", "incremental";
+}
+
+// Budget is a stopping point the host imposes on one collection.
+message Budget {
+  // Wall-clock limit for this stream. Unset or zero means none.
+  google.protobuf.Duration max_duration = 1;
+  // Record limit for this stream. Zero means none. Primarily for the
+  // conformance suite and sampling; production hosts use max_duration.
+  // Overshoot to the next checkpoint is allowed.
+  uint64 max_records = 2;
+}
+
+// Cursor is opaque to the host.
+message Cursor {
+  // Plugin-defined. Bytes so plugins pack what they like; base64 in JSON.
+  bytes token = 1;
+
+  // 2: issued_at. Rejected: the plugin packs what it needs into token, and
+  //    the host stamps receipt.
+  reserved 2;
+}
+
+// CollectResponse is one stream event. Exactly one arm is set. A host that
+// receives none set, which is how a future event kind from a newer plugin
+// arrives, skips and counts it rather than failing.
+message CollectResponse {
+  // The event.
+  oneof event {
+    // A vertex.
+    Node node = 1;
+    // A relationship.
+    Edge edge = 2;
+    // A last-seen signal with its freshness.
+    Activity activity = 3;
+    // A resume point.
+    Checkpoint checkpoint = 4;
+    // Liveness and pacing.
+    Progress progress = 5;
+    // The terminal event. Exactly one per stream; nothing follows it.
+    Completion completion = 6;
+    // Evidence-grade, non-fatal information.
+    Diagnostic diagnostic = 7;
+  }
+
+  // Deletions are never streamed (R10). Absence is computed by the host from
+  // complete snapshots.
+  reserved "tombstone", "deleted", "delta", "removed";
+}
+
+// Checkpoint means: everything before this point has been sent, and resuming
+// from this cursor re-sends nothing before it and skips nothing after it.
+// At least one per stream that emits any record, so the resume protocol is
+// always exercisable.
+message Checkpoint {
+  // The resume point.
+  Cursor cursor = 1;
+}
+
+// Progress carries liveness and pacing. Every field is optional: Keycloak
+// exposes no rate-limit state, AWS throttles reactively, GitHub publishes
+// headers. R12.
+message Progress {
+  // Counts so far in THIS stream, not including prior resumed streams.
+  Counts counts = 1;
+  // Scope currently being worked, if any. Key with type NODE_TYPE_SCOPE.
+  Key scope = 2;
+  // Plugin vocabulary: "users", "group-tree", "effective-client-roles".
+  string phase = 3;
+  // Rate-limit state, when the source exposes any.
+  RateLimit rate_limit = 4;
+}
+
+// RateLimit is rate-limit state as the source reports it.
+message RateLimit {
+  // Requests left in the current window. Unset means the source does not say.
+  optional int64 remaining = 1;
+  // Size of the window. Unset means the source does not say.
+  optional int64 limit = 2;
+  // When the window resets.
+  google.protobuf.Timestamp resets_at = 3;
+  // Set while the plugin is deliberately waiting.
+  google.protobuf.Duration retry_after = 4;
+}
+
+// Completion is the last event of every stream. Exactly one; nothing may
+// follow it. A stream that closes without one is INCOMPLETE with cause
+// PLUGIN_ERROR as far as the host is concerned. R5.
+message Completion {
+  // The verdict on this stream.
+  Verdict verdict = 1;
+  // Must equal what the host counted for this stream. A mismatch is a
+  // contract violation: the plugin does not know what it sent.
+  Counts counts = 2;
+  // One per discovered scope, requested or not. R7. COMPLETE requires every
+  // entry to be SCOPE_STATUS_COLLECTED or SCOPE_STATUS_SKIPPED.
+  repeated ScopeOutcome scopes = 3;
+  // Required when INCOMPLETE and the plugin can resume; absent means the only
+  // recovery is a fresh collection. Forbidden when COMPLETE.
+  Cursor resume_cursor = 4;
+  // Required when INCOMPLETE. Forbidden when COMPLETE.
+  IncompleteCause cause = 5;
+  // Optional detail when INCOMPLETE.
+  Error error = 6;
+
+  // 7, 8: started_at, finished_at. Rejected: the host knows both, and a
+  //       plugin clock adds a disagreement rather than information.
+  reserved 7, 8;
+
+  // A boolean completeness flag is the exact failure mode R5 exists to
+  // prevent: a caller can forget to read it. The verdict enum is validated
+  // instead.
+  reserved "complete", "partial", "success", "ok";
+}
+
+// Verdict says whether the stream's population may be presented as complete.
+enum Verdict {
+  // Invalid on the wire.
+  VERDICT_UNSPECIFIED = 0;
+  // Every discovered scope was collected, or skipped by request.
+  VERDICT_COMPLETE = 1;
+  // Anything else. The host surfaces this as an error.
+  VERDICT_INCOMPLETE = 2;
+}
+
+// IncompleteCause says why a stream ended INCOMPLETE.
+enum IncompleteCause {
+  // Invalid on the wire.
+  INCOMPLETE_CAUSE_UNSPECIFIED = 0;
+  // The source rate-limited and the plugin chose to stop rather than wait.
+  INCOMPLETE_CAUSE_RATE_LIMITED = 1;
+  // CollectRequest.budget was reached.
+  INCOMPLETE_CAUSE_BUDGET_EXHAUSTED = 2;
+  // At least one discovered scope could not be fully collected.
+  INCOMPLETE_CAUSE_SCOPE_UNREACHABLE = 3;
+  // The source returned an error the plugin could not work around.
+  INCOMPLETE_CAUSE_SOURCE_ERROR = 4;
+  // The plugin itself failed. Also what the host records for a stream that
+  // ended without a Completion at all.
+  INCOMPLETE_CAUSE_PLUGIN_ERROR = 5;
+  // This stream resumed from a cursor and therefore carries only part of the
+  // population; the rest is in the stream that produced the cursor. A
+  // resumed stream is never a whole population on its own, whatever it
+  // managed to collect, and saying so is the only thing that stops a
+  // continuation being read as a complete collection of very few things.
+  INCOMPLETE_CAUSE_PARTIAL_STREAM = 6;
+  // The configuration this collection was given cannot be used. The source
+  // was never reached, so reporting it as a source error sends an operator
+  // to look at something that did nothing wrong.
+  INCOMPLETE_CAUSE_INVALID_CONFIG = 7;
+  // CollectRequest.resume_from could not be used and the plugin chose to
+  // refuse rather than start over. Nothing was collected, so calling it a
+  // partial stream would say a continuation arrived when none did.
+  INCOMPLETE_CAUSE_INVALID_CURSOR = 8;
+}
+
+// Counts are record counts for one stream.
+message Counts {
+  // Node events with key.type NODE_TYPE_IDENTITY.
+  uint64 identities = 1;
+  // Node events with key.type NODE_TYPE_GROUPING.
+  uint64 groupings = 2;
+  // Node events with key.type NODE_TYPE_ENTITLEMENT.
+  uint64 entitlements = 3;
+  // Node events with key.type NODE_TYPE_RESOURCE.
+  uint64 resources = 4;
+  // Node events with key.type NODE_TYPE_SCOPE.
+  uint64 scopes = 5;
+  // Edge events, all types.
+  uint64 edges = 6;
+  // Activity events.
+  uint64 activities = 7;
+}
+
+// ScopeOutcome says what happened to one scope in this stream.
+message ScopeOutcome {
+  // Key with type NODE_TYPE_SCOPE.
+  Key scope = 1;
+  // The outcome.
+  ScopeStatus status = 2;
+  // Required when status is PARTIAL or UNREACHABLE.
+  Error error = 3;
+  // Required when capabilities.activity is true, and the other field in this
+  // file where the zero value is legitimate. UNAVAILABLE or UNDETERMINED
+  // means no identity in the scope has an activity answer, and the plugin
+  // need not emit a per-identity Unavailable record for each. R4.
+  ActivityAvailability activity = 4;
+}
+
+// ScopeStatus is the outcome for one scope.
+enum ScopeStatus {
+  // Invalid on the wire.
+  SCOPE_STATUS_UNSPECIFIED = 0;
+  // Fully collected.
+  SCOPE_STATUS_COLLECTED = 1;
+  // Reached, but the collection of it did not finish.
+  SCOPE_STATUS_PARTIAL = 2;
+  // The credentials did not reach it.
+  SCOPE_STATUS_UNREACHABLE = 3;
+  // Discovered but excluded by CollectRequest.scopes. Does not make the
+  // verdict INCOMPLETE.
+  SCOPE_STATUS_SKIPPED = 4;
+}
+
+// Diagnostic is non-fatal, evidence-grade information that belongs with the
+// snapshot rather than in stderr: "realm probe: event storage enabled but
+// LOGIN is not in enabledEventTypes". Also returned by TestConnection.
+message Diagnostic {
+  // ERROR here does not fail the stream; the Completion verdict does that.
+  Severity severity = 1;
+  // Plugin-defined machine code. Reserved by the contract: "cursor.rejected".
+  string code = 2;
+  // Human-readable explanation.
+  string message = 3;
+  // Optional: the scope this is about.
+  Key scope = 4;
+  // Optional: the node this is about.
+  Key subject = 5;
+  // Source-vocabulary details.
+  map<string, string> details = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Graph  (R1, R2, R3, R8, R9, R11, R14)
+// ---------------------------------------------------------------------------
+
+// Key identifies a node. R9.
+//
+// (scope, type, id) is unique within one configured source instance; the host
+// prefixes the instance id when storing. `type` is part of the key so that one
+// source object can be two nodes: an AWS role is (acct, IDENTITY, AROA...) and
+// (acct, ENTITLEMENT, AROA...).
+//
+// `id` and `scope` MUST be the source's rename-stable identifier: Keycloak
+// entity UUIDs; GitHub node_id; AWS unique id (AIDA.../AROA.../ANPA...) with
+// the ARN in context, because the ARN embeds the name and is not rename-stable.
+// Where the source has no object for an entitlement, as with GitHub's "write
+// on repo R", the plugin composes an id from rename-stable parts and documents
+// the format; that format is part of the plugin's own compatibility surface.
+// A rename therefore changes Node.name and nothing in Key.
+message Key {
+  // The scope this node was observed in. For a SCOPE node, equals `id`.
+  string scope = 1;
+  // The node type. Part of the key; see above.
+  NodeType type = 2;
+  // The source's rename-stable identifier, or the documented composite.
+  string id = 3;
+
+  // 4: source. Rejected: the host knows which instance it launched, and a
+  //    plugin naming itself in every key is a lie vector.
+  reserved 4;
+}
+
+// NodeType is the vocabulary type of a node. Activity is an event, not a node.
+enum NodeType {
+  // Invalid on the wire.
+  NODE_TYPE_UNSPECIFIED = 0;
+  // A principal. Who?
+  NODE_TYPE_IDENTITY = 1;
+  // A container of identities. Through what?
+  NODE_TYPE_GROUPING = 2;
+  // A permission. Allowed to do what?
+  NODE_TYPE_ENTITLEMENT = 3;
+  // What access is to. To what?
+  NODE_TYPE_RESOURCE = 4;
+  // An isolation boundary. Where?
+  NODE_TYPE_SCOPE = 5;
+}
+
+// Node is a vertex. Flat on purpose: the core is a property graph and treats
+// every type the same way, and Identity is the only type with structured
+// facts. R1.
+message Node {
+  // Identity of this node.
+  Key key = 1;
+  // Display name at collection time. Non-empty.
+  string name = 2;
+  // The source's own type name for this object: "user", "service_account",
+  // "realm_role", "client_role", "team", "repository_permission",
+  // "managed_policy", "inline_policy", "assumable_role". Non-empty, source
+  // vocabulary, never normalised. A reviewer UI renders it as the badge. R8.
+  string source_type = 3;
+  // Enumerated, or only seen named by another object. R14.
+  Provenance provenance = 4;
+  // Source-vocabulary attributes, rendered by a UI, never interpreted by the
+  // core: realm, client_id, role_type, permission_level, policy_arn, arn,
+  // email, federated_identity. Strings only, because the evidence hash is
+  // computed over canonical JSON and strings are unambiguous. R8.
+  map<string, string> context = 5;
+
+  // Required iff key.type is NODE_TYPE_IDENTITY; forbidden otherwise. If
+  // another type grows structured facts later it gets its own field under the
+  // same rule.
+  IdentityFacts identity = 10;
+
+  // 6: observed_at per node. Rejected: the host stamps receipt, and
+  //    per-record time only matters inside a resumed stream, whose freshness
+  //    is its start time.
+  reserved 6;
+
+  // No node carries a computed permission set or a normalised permission verb.
+  reserved "permission", "permissions", "effective_permissions", "verb", "action";
+}
+
+// Provenance says whether the plugin enumerated this object or only saw it
+// named by another. R14.
+//
+// A trust policy naming an external account, or a SAML provider, produces a
+// REFERENCED Identity: emitted so the grant has a subject, with no claim about
+// its attributes or its other grants. This is the hook for cross-source
+// correlation later; the contract needs no change for either answer to that
+// question.
+enum Provenance {
+  // Invalid on the wire.
+  PROVENANCE_UNSPECIFIED = 0;
+  // The plugin enumerated this object from the source.
+  PROVENANCE_OBSERVED = 1;
+  // The plugin only saw this object named by another. No further claims.
+  PROVENANCE_REFERENCED = 2;
+}
+
+// IdentityFacts are the structured facts that only an Identity has.
+message IdentityFacts {
+  // Human, software, workload, or honestly unknown. R11.
+  IdentityKind kind = 1;
+  // Whether the source considers the identity enabled.
+  IdentityStatus status = 2;
+  // When the source says the identity was created, if it says.
+  google.protobuf.Timestamp created_at = 3;
+
+  // 4: emails. Rejected: a structured correlation handle before the
+  //    correlation question is answered. context{email} carries the raw value.
+  reserved 4;
+
+  // A bool `enabled` defaults to false, which would read as "disabled" when
+  // the author forgot to set it. The status enum is validated instead.
+  reserved "enabled", "disabled", "active";
+}
+
+// IdentityKind classifies a principal. R11. UNKNOWN is an honest answer;
+// UNSPECIFIED means the author forgot.
+enum IdentityKind {
+  // Invalid on the wire.
+  IDENTITY_KIND_UNSPECIFIED = 0;
+  // A person.
+  IDENTITY_KIND_HUMAN = 1;
+  // Represents an application or integration through credentials issued to
+  // it: a Keycloak service-account user, a GitHub App installation, an IAM
+  // user that only holds access keys.
+  IDENTITY_KIND_SERVICE = 2;
+  // A workload runtime identity with no long-lived credential of its own: an
+  // IAM role trusted by a compute service, a service-linked role.
+  IDENTITY_KIND_MACHINE = 3;
+  // The plugin cannot tell. Valid.
+  IDENTITY_KIND_UNKNOWN = 4;
+}
+
+// IdentityStatus is the enabled state as the source reports it.
+enum IdentityStatus {
+  // Invalid on the wire.
+  IDENTITY_STATUS_UNSPECIFIED = 0;
+  // The source considers the identity usable.
+  IDENTITY_STATUS_ACTIVE = 1;
+  // The source has disabled it. Grants it still holds are a review finding.
+  IDENTITY_STATUS_DISABLED = 2;
+  // The source has no notion of it, or does not expose it. Valid.
+  IDENTITY_STATUS_UNKNOWN = 3;
+}
+
+// Edge is a relationship. R1. Endpoint types are fixed per EdgeType:
+//
+//   MEMBER_OF    Identity             -> Grouping
+//   CHILD_OF     Grouping             -> Grouping     (child -> parent)
+//   HOLDS        Identity | Grouping  -> Entitlement  (a grant)
+//   INCLUDES     Entitlement          -> Entitlement  (composite -> member)
+//   APPLIES_TO   Entitlement          -> Resource | Scope
+//   ACTS_AS      Entitlement          -> Identity     (holding it lets you act
+//                                                      as this principal; the
+//                                                      AWS assumable role)
+//
+// Edge identity is (type, from, to, path). Two HOLDS edges from the same
+// subject to the same entitlement by different paths are two grants, and both
+// matter: revoking one leaves the other standing. R3.
+message Edge {
+  // The relationship type.
+  EdgeType type = 1;
+  // Tail node.
+  Key from = 2;
+  // Head node.
+  Key to = 3;
+  // R2. Required on every edge. On structural edges (MEMBER_OF, CHILD_OF,
+  // INCLUDES, APPLIES_TO, ACTS_AS) it is DIRECT or COARSE, never EFFECTIVE.
+  Fidelity fidelity = 4;
+  // R3. Intermediate nodes from `from` exclusive to `to` exclusive. Empty iff
+  // fidelity is DIRECT. Non-empty iff fidelity is EFFECTIVE. Either for
+  // COARSE. Every consecutive hop must be an edge that was emitted with no
+  // path of its own: paths are walks over facts the source stated, never over
+  // other derivations, and conformance checks it. Note that this is about the
+  // hop's path being empty, not about its fidelity — a COARSE edge that
+  // carries a path is a derivation like any other.
+  Path path = 5;
+  // Optional source-vocabulary name for how the source expresses this edge:
+  // "group_role_mapping", "collaborator", "policy_attachment",
+  // "trust_policy", "base_permission". R8.
+  string source_type = 6;
+  // Source-vocabulary attributes, as on Node.context. R8.
+  map<string, string> context = 7;
+
+  // 8: id, a plugin-assigned edge id. Rejected: edge identity is
+  //    (type, from, to, path), and a second identity would drift from it.
+  reserved 8;
+
+  // No edge carries a normalised permission verb or a computed permission set.
+  reserved "permission", "permissions", "effective_permissions", "verb", "action", "level";
+}
+
+// EdgeType is the relationship type. See the table on Edge for endpoints.
+enum EdgeType {
+  // Invalid on the wire.
+  EDGE_TYPE_UNSPECIFIED = 0;
+  // Identity is a direct member of Grouping.
+  EDGE_TYPE_MEMBER_OF = 1;
+  // Grouping is a child of Grouping: a Keycloak subgroup, a GitHub child team.
+  EDGE_TYPE_CHILD_OF = 2;
+  // Identity or Grouping holds Entitlement. A grant.
+  EDGE_TYPE_HOLDS = 3;
+  // Entitlement contains Entitlement: a Keycloak composite role.
+  EDGE_TYPE_INCLUDES = 4;
+  // Entitlement is scoped to a Resource -- a Keycloak client role to its
+  // client, a repository permission to its repository -- or to a whole Scope,
+  // which is how a source says "everything here". GitHub's organization base
+  // permission and an AWS policy naming Resource "*" are both one stated fact
+  // covering every resource in the scope; expanding either into an edge per
+  // resource would emit relationships the source never stated, and would be
+  // quadratic in a large tenant.
+  EDGE_TYPE_APPLIES_TO = 5;
+  // Holding Entitlement lets the holder act as Identity: an assumable role.
+  EDGE_TYPE_ACTS_AS = 6;
+}
+
+// Fidelity says how much a consumer may trust the claim an edge makes. R2.
+//
+// These three values conflate two axes — how the grant was reached, and
+// whether its content has been evaluated. That is deliberate: COARSE
+// dominates, and the derivation axis is recoverable from whether the path is
+// empty. If a fourth value is ever proposed, split the axes first.
+enum Fidelity {
+  // Invalid on the wire.
+  FIDELITY_UNSPECIFIED = 0;
+  // The source states this edge explicitly.
+  FIDELITY_DIRECT = 1;
+  // The plugin derived it through groupings, hierarchy or composites, and
+  // stands behind the result.
+  FIDELITY_EFFECTIVE = 2;
+  // The entitlement is a container of permissions the plugin did not and
+  // cannot evaluate. Dominates: a policy reached through a group is COARSE
+  // and the path says "via group". Every AWS policy attachment is this.
+  FIDELITY_COARSE = 3;
+}
+
+// Path is the route a derived grant takes. The edge type of each hop is
+// implied by the node types at its ends, so it is not stored and cannot
+// disagree with the nodes. If a future edge type makes a type pair ambiguous,
+// add a parallel repeated EdgeType field then; that is non-breaking.
+message Path {
+  // Intermediate node keys, in order, exclusive of both endpoints.
+  repeated Key via = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Activity  (R4)
+// ---------------------------------------------------------------------------
+
+// Activity is a last-seen signal, never a bare timestamp. One record per
+// (subject, signal). The core takes the maximum across signals for "last
+// activity" and keeps them all.
+message Activity {
+  // Usually an IDENTITY. May be any node: role_last_used belongs to an
+  // Entitlement that is an assumable role.
+  Key subject = 1;
+  // One of DescribeResponse.activity_signals[].name.
+  string signal = 2;
+  // When the plugin read the value. Required.
+  google.protobuf.Timestamp observed_at = 3;
+  // How far back the source can see for this signal. Required unless the
+  // result is unavailable.
+  CoverageWindow coverage = 4;
+  // How stale the source admits the value may be: a credential report is
+  // hours, a login event is zero. Required unless the result is unavailable,
+  // and zero is a value rather than an absence.
+  google.protobuf.Duration source_lag = 5;
+  // Exactly one arm. A oneof has no default, which is the point: "no activity
+  // in the window" and "the source cannot answer" are different claims, and a
+  // record with no arm set is a contract violation rather than "never".
+  oneof result {
+    // Activity was seen; here is when.
+    Seen seen = 6;
+    // No activity within the coverage window.
+    NotSeen not_seen = 7;
+    // The source cannot answer for this subject.
+    Unavailable unavailable = 8;
+  }
+  // Source vocabulary: client_id, ip_address, service_namespace.
+  map<string, string> context = 9;
+
+  // A top-level timestamp here is the bare-timestamp anti-pattern R4 forbids.
+  // The time lives inside Seen, next to its confidence.
+  reserved "last_seen", "timestamp", "last_activity", "last_used";
+}
+
+// Seen means the source reports activity.
+message Seen {
+  // Most recent activity the source reports.
+  google.protobuf.Timestamp last_seen = 1;
+  // How precise last_seen is.
+  Confidence confidence = 2;
+}
+
+// NotSeen means no activity for this subject within the coverage window.
+// Confidence still applies: an Access Advisor "not accessed" is APPROXIMATE.
+message NotSeen {
+  // How precise the absence claim is.
+  Confidence confidence = 1;
+}
+
+// Unavailable means the source cannot answer for this subject: event storage
+// disabled after a per-scope AVAILABLE, or an Access Advisor job that failed
+// for one role.
+message Unavailable {
+  // Plugin-defined machine code.
+  string code = 1;
+  // Human-readable reason.
+  string reason = 2;
+}
+
+// Confidence is the precision of an activity claim.
+enum Confidence {
+  // Invalid on the wire.
+  CONFIDENCE_UNSPECIFIED = 0;
+  // The source recorded the event itself, as a Keycloak login event does.
+  CONFIDENCE_EXACT = 1;
+  // The source aggregates, samples or lags, as Access Advisor and the
+  // credential report do.
+  CONFIDENCE_APPROXIMATE = 2;
+}
+
+// CoverageWindow is how far back the source can see. Both bounds are
+// required: an absent lower bound would read as "we see everything", which is
+// the one lie a reviewer cannot detect. A plugin that cannot bound it uses the
+// oldest record it can see, not the beginning of time.
+message CoverageWindow {
+  // Earliest instant the source can report activity from.
+  google.protobuf.Timestamp since = 1;
+  // Latest instant covered; usually equal to observed_at.
+  google.protobuf.Timestamp until = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+// Error is a structured error the host attributes to the plugin or its source.
+message Error {
+  // Class the host can act on.
+  ErrorCode code = 1;
+  // Human-readable message.
+  string message = 2;
+  // The source's own code, verbatim: "403", "AccessDenied", "invalid_grant".
+  string source_code = 3;
+  // Whether retrying without changes could succeed.
+  bool retryable = 4;
+  // When to retry, if the source said.
+  google.protobuf.Duration retry_after = 5;
+  // Source-vocabulary details.
+  map<string, string> details = 6;
+}
+
+// ErrorCode is the class of an Error.
+enum ErrorCode {
+  // Invalid on the wire.
+  ERROR_CODE_UNSPECIFIED = 0;
+  // Credentials rejected.
+  ERROR_CODE_AUTHENTICATION_FAILED = 1;
+  // Credentials accepted but lacking a permission.
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  // The source rate-limited the plugin.
+  ERROR_CODE_RATE_LIMITED = 3;
+  // The source could not be reached.
+  ERROR_CODE_SOURCE_UNAVAILABLE = 4;
+  // The source returned an error not covered above.
+  ERROR_CODE_SOURCE_ERROR = 5;
+  // The config document is invalid for this operation.
+  ERROR_CODE_INVALID_CONFIG = 6;
+  // CollectRequest.resume_from could not be used.
+  ERROR_CODE_INVALID_CURSOR = 7;
+  // A defect in the plugin.
+  ERROR_CODE_PLUGIN_INTERNAL = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Revoke  (declared, not implemented)
+// ---------------------------------------------------------------------------
+
+// RevokeRequest asks for one grant to be removed at the source.
+message RevokeRequest {
+  // The JSON config document.
+  bytes config = 1;
+  // The grant exactly as collected. Only a DIRECT or COARSE HOLDS edge is
+  // revocable; an EFFECTIVE one names a path, and the thing to revoke is a
+  // DIRECT edge on that path.
+  Edge grant = 2;
+  // Report what would happen without doing it.
+  bool dry_run = 3;
+
+  // 4, 5: reason, requested_by. Rejected for now: actor and justification
+  //       take their shape from the campaign design behind the Revoke gate,
+  //       and guessing a free string now would freeze it.
+  reserved 4, 5;
+}
+
+// RevokeResponse reports what happened.
+message RevokeResponse {
+  // What happened.
+  RevokeOutcome outcome = 1;
+  // Required when outcome is FAILED.
+  Error error = 2;
+  // The source's own reference for the change, if it has one.
+  string source_reference = 3;
+}
+
+// RevokeOutcome is the outcome of a Revoke.
+enum RevokeOutcome {
+  // Invalid on the wire.
+  REVOKE_OUTCOME_UNSPECIFIED = 0;
+  // The plugin does not implement revocation. The only answer today.
+  REVOKE_OUTCOME_NOT_SUPPORTED = 1;
+  // The grant was removed at the source.
+  REVOKE_OUTCOME_REVOKED = 2;
+  // Dry run: the grant would have been removed.
+  REVOKE_OUTCOME_WOULD_REVOKE = 3;
+  // The plugin tried and the source refused. See error.
+  REVOKE_OUTCOME_FAILED = 4;
+}

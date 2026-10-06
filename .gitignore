@@ -1,0 +1,29 @@
+# Build output
+/bin/
+/dist/
+# A Go binary takes its directory's name, so building in place leaves one
+# beside the source. Listed rather than patterned, because a pattern wide
+# enough to catch the binary also catches the testdata and Dockerfiles an
+# example may legitimately need. TestNoCompiledBinaryIsTracked is the general
+# defence: it reads the first bytes of every tracked file, so a new example
+# whose entry is missing here fails the build rather than shipping 18 MB.
+/sdk/examples/minimal/minimal
+
+# Test + coverage artefacts
+/.cover/
+*.out
+*.cov
+*.test
+
+# Local tool state
+/.task/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local environment overrides (never commit credentials)
+.env
+.env.local
