@@ -1,8 +1,22 @@
 # Contributing
 
 We are not accepting outside code contributions yet. Issues are welcome.
-Before the first outside contribution is merged we will publish the agreement
-it needs (a DCO or a CLA).
+
+When we do, contributions are made under the
+[Developer Certificate of Origin](https://developercertificate.org/): sign each
+commit off with `git commit -s`. There is no CLA, and you keep your copyright.
+"The Acciew Authors", in `NOTICE`, are the people whose commits are in this
+repository's history.
+
+The `dco` check fails a pull request with a commit that is not signed off. To
+fix one that is already open:
+
+```sh
+git rebase --signoff origin/main && git push --force-with-lease
+```
+
+Edits made in the browser are signed off by GitHub, which this repository
+requires.
 
 ## What belongs here
 

@@ -77,3 +77,26 @@ jobs:
       # dependency changes during review.
       - name: go.mod is tidy
         run: ./bin/task tidy:check
+
+  # Contributions are made under the Developer Certificate of Origin: see
+  # CONTRIBUTING.md. Checked on pull requests only; main's history is whatever
+  # was merged.
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.work
+          cache: false
+
+      # The checkout is the merge of the pull request into its base as it is
+      # now: the first parent is the base, the second is the pull request. The
+      # event's own base sha is the one from when the pull request was opened,
+      # and would put main's commits in the range after an "Update branch".
+      - name: Every commit is signed off
+        run: GOWORK=off go -C tools run ./dcocheck -range "HEAD^1..HEAD^2"
