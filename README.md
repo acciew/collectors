@@ -9,6 +9,12 @@ A collector is a separate program. It reads one source, never writes to it, and
 hands what it found to the Acciew host over a local connection. The host, the
 inventory, the review workflow and the web app are not in this repository.
 
+Three collectors ship today: Keycloak, GitHub and AWS IAM. They are the first,
+not the set. The contract and the SDK are how every other one is written, by us
+or by anyone, and `sdk/conformance` is the suite an author runs against theirs.
+A collector written by someone else lives in its own repository; see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## What each collector reads
 
 | Collector | Reads | Credential it needs | Writes? |
@@ -34,6 +40,8 @@ and what has not been verified.
 - A release's archives are listed with their digests in `SHA256SUMS` and carry a
   build provenance attestation, which names the workflow run and commit that
   built them. `acciew-collector-<name> --version` says which build you have.
+  The check needs a recent `gh`: 2.102 verified the v0.1.1 archives, 2.52 could
+  not read the signing roots.
 
   ```sh
   gh attestation verify <archive> --repo acciew/collectors \
@@ -74,7 +82,8 @@ mkdir -p bin && GOWORK=off GOBIN="$PWD/bin" go -C tools install tool
 ## Writing your own collector
 
 See [`docs/plugins/README.md`](docs/plugins/README.md). Run the conformance suite
-against it; it is the same one the first-party collectors pass.
+against it; [`sdk/examples/minimal`](sdk/examples/minimal) is a collector that
+passes it.
 
 ## Security
 
