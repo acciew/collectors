@@ -24,4 +24,6 @@ suite. We will list those rather than host them.
 
 ## Releases
 
-Every module is tagged together, from one commit, with one version number.
+Every module is tagged together, from one commit, with one version number. The
+test-only `plugins/keycloak/integration` module is the exception: it is never
+tagged.

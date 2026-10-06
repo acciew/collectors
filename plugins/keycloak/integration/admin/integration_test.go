@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.acciew.io/collector/plugins/keycloak/integration/internal/kctest"
 	"go.acciew.io/collector/plugins/keycloak/internal/admin"
-	"go.acciew.io/collector/plugins/keycloak/internal/kctest"
 )
 
 // These run against a real Keycloak. They exist because the collector's

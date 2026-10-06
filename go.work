@@ -13,6 +13,9 @@ toolchain go1.26.8
 //                the reference collector. Its own module on purpose: it proves the SDK is
 //                usable from outside this repository.
 //   ./plugins/*  first-party collectors, built exactly as a third party would build them.
+//   ./plugins/keycloak/integration
+//                the tests that start a real Keycloak. Its own module so the collector's
+//                go.mod does not carry a container library. Never installed or tagged.
 //
 // The root go.mod is tooling-only: it exists so the import rules have a module path to
 // resolve against, and holds no packages. ./tools is deliberately NOT in this workspace:
@@ -23,6 +26,7 @@ use (
 	./plugins/awsiam
 	./plugins/github
 	./plugins/keycloak
+	./plugins/keycloak/integration
 	./sdk/conformance
 	./sdk/examples/minimal
 	./sdk/go

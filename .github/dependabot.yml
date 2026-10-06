@@ -9,6 +9,7 @@ updates:
       - "/sdk/conformance"
       - "/sdk/examples/minimal"
       - "/plugins/keycloak"
+      - "/plugins/keycloak/integration"
       - "/plugins/github"
       - "/plugins/awsiam"
       - "/tools"

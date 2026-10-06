@@ -24,8 +24,9 @@ and what has not been verified.
 
 - Every request a collector makes is in its own module: `internal/admin`
   (Keycloak), `internal/api` (GitHub) and `internal/iam` (AWS, through the AWS
-  SDK). A test helper, `plugins/keycloak/internal/kctest`, seeds a throwaway
-  Keycloak for tests and is imported only by tests.
+  SDK). The tests that start a real Keycloak, and the helper that seeds it, are in
+  `plugins/keycloak/integration`, a module of its own, so the collector's `go.mod`
+  carries no container library.
 - A credential is never written into a configuration. It is a reference
   (`env:NAME` or `file:/path`) resolved inside the collector's own process, or it
   comes from the cloud SDK's own chain. The one literal is an AWS external ID,
@@ -47,8 +48,9 @@ tools/                pinned developer tooling
 
 `api`, `sdk/go`, `sdk/conformance`, `sdk/examples/minimal` and each directory
 under `plugins/` is its own Go module, and all of them are tagged together from
-one commit. The repository root and `tools/` have `go.mod` files for tooling
-only. Import paths start with `go.acciew.io/collector`.
+one commit. `plugins/keycloak/integration` is also a module, but it is only
+tests: never installed, never tagged. The repository root and `tools/` have
+`go.mod` files for tooling only. Import paths start with `go.acciew.io/collector`.
 
 ## Building
 

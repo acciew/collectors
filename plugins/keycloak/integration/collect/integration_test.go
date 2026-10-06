@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"go.acciew.io/collector/plugins/keycloak/integration/internal/kctest"
 	"go.acciew.io/collector/plugins/keycloak/internal/admin"
 	"go.acciew.io/collector/plugins/keycloak/internal/collect"
-	"go.acciew.io/collector/plugins/keycloak/internal/kctest"
 )
 
 // The resolution this collector performs is the part a fake cannot check.
