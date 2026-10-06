@@ -11,6 +11,7 @@ vars:
   BIN: "{{.ROOT_DIR}}/bin"
   COVER_DIR: "{{.ROOT_DIR}}/.cover"
   MODULE: go.acciew.io/collector
+  PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
   # Workspace module directories, read from go.work so this never drifts.
   MODULE_DIRS:
     sh: go list -m -f '{{`{{.Dir}}`}}'
@@ -122,6 +123,58 @@ tasks:
           go build -C "$dir" -o {{.BIN}}/acciew-collector-"$(basename "$dir")" .
         done
       - go build -C {{.ROOT_DIR}}/sdk/examples/minimal -o {{.BIN}}/acciew-collector-minimal .
+
+  dist:
+    desc: Build the release archives into ./dist (VERSION=0.1.1; PLATFORMS to narrow)
+    requires:
+      vars: [VERSION]
+    vars:
+      DIST: "{{.ROOT_DIR}}/dist"
+    # Through the environment and not pasted into the script, so a VERSION with
+    # a quote or a line break in it is a refused version and not a command.
+    env:
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - |
+        set -eu
+        version="$VERSION"
+        # Semantic versioning, as Go requires of a module tag. The tag carries
+        # the v; the binaries report the number. grep reads a line at a time, so
+        # the characters are checked first.
+        case "$version" in *[!0-9A-Za-z.-]*) echo "VERSION has characters a version does not" >&2; exit 1 ;; esac
+        id='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+        echo "$version" | grep -Eq "^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?\$" || {
+          echo "VERSION must look like 0.1.1, got \"$version\"" >&2
+          exit 1
+        }
+        rm -rf "{{.DIST}}" && mkdir -p "{{.DIST}}"
+        flags="-s -w -X main.version=$version"
+        for platform in {{.PLATFORMS}}; do
+          name="acciew-collectors-$version-${platform%/*}-${platform#*/}"
+          out="{{.DIST}}/$name"
+          mkdir -p "$out"
+          export CGO_ENABLED=0 GOOS="${platform%/*}" GOARCH="${platform#*/}"
+          for dir in {{.ROOT_DIR}}/plugins/*/; do
+            go build -C "$dir" -trimpath -ldflags "$flags" -o "$out/acciew-collector-$(basename "$dir")" .
+          done
+          cp {{.ROOT_DIR}}/LICENSE {{.ROOT_DIR}}/NOTICE {{.ROOT_DIR}}/README.md "$out/"
+          # Without this, macOS tar adds a ._ metadata file beside every entry.
+          COPYFILE_DISABLE=1 tar -C "{{.DIST}}" -czf "$out.tar.gz" "$name"
+          rm -rf "$out"
+        done
+        cd "{{.DIST}}"
+        if command -v sha256sum >/dev/null; then sha256sum -- *.tar.gz; else shasum -a 256 -- *.tar.gz; fi > SHA256SUMS
+
+  dist:check:
+    desc: Check the archives the way somebody who downloaded one would
+    requires:
+      vars: [VERSION]
+    env:
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - >-
+        ACCIEW_DIST={{.ROOT_DIR}}/dist ACCIEW_VERSION="$VERSION" ACCIEW_PLATFORMS="{{.PLATFORMS}}"
+        GOWORK=off go -C {{.ROOT_DIR}}/tools test -count=1 ./distcheck/
 
   vuln:
     desc: Scan every module for known vulnerabilities, tools included
@@ -261,4 +314,4 @@ tasks:
   clean:
     desc: Remove build and coverage output
     cmds:
-      - rm -rf {{.BIN}} {{.COVER_DIR}}
+      - rm -rf {{.BIN}} {{.COVER_DIR}} {{.ROOT_DIR}}/dist

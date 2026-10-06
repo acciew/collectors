@@ -2,6 +2,9 @@ package collector
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 
 	"github.com/hashicorp/go-plugin"
 	"google.golang.org/grpc"
@@ -31,12 +34,20 @@ var handshake = plugin.HandshakeConfig{
 // collectorEntry is where this kind's contract is served.
 var collectorEntry = pluginv1.Entry(collectorv1.Kind, collectorv1.ProtocolVersion)
 
-// Serve runs a collector until the host shuts it down. It does not return.
+// Serve runs a collector until the host shuts it down. It does not return,
+// except to answer --version, which needs no host.
 //
 // This is the whole of a plugin's main:
 //
 //	func main() { collector.Serve(&myCollector{}) }
 func Serve(c Collector) {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		if err := printVersion(os.Stdout, c); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake,
 		Plugins: map[string]plugin.Plugin{
@@ -102,4 +113,14 @@ func (h *handshakeService) Hello(ctx context.Context, _ *pluginv1.HelloRequest) 
 		out.PluginName, out.PluginVersion = d.Name, d.Version
 	}
 	return out, nil
+}
+
+// printVersion writes "<name> <version>", as the collector describes itself.
+func printVersion(w io.Writer, c Collector) error {
+	d, err := c.Describe(context.Background())
+	if err != nil {
+		return fmt.Errorf("describing the collector: %w", err)
+	}
+	_, err = fmt.Fprintf(w, "%s %s\n", d.Name, d.Version)
+	return err
 }

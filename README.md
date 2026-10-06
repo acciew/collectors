@@ -31,6 +31,14 @@ and what has not been verified.
   (`env:NAME` or `file:/path`) resolved inside the collector's own process, or it
   comes from the cloud SDK's own chain. The one literal is an AWS external ID,
   which AWS describes as an identifier and not a secret.
+- A release's archives are listed with their digests in `SHA256SUMS` and carry a
+  build provenance attestation, which names the workflow run and commit that
+  built them. `acciew-collector-<name> --version` says which build you have.
+
+  ```sh
+  gh attestation verify <archive> --repo acciew/collectors \
+    --signer-workflow acciew/collectors/.github/workflows/release.yml
+  ```
 - Collectors do not import each other, and the SDK imports no collector. CI
   enforces both (`importlint.json`).
 

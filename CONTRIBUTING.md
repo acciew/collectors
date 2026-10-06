@@ -27,3 +27,10 @@ suite. We will list those rather than host them.
 Every module is tagged together, from one commit, with one version number. The
 test-only `plugins/keycloak/integration` module is the exception: it is never
 tagged.
+
+The binaries are built by the `release` workflow: run it from `main` with a
+version, and it runs everything CI runs, builds one archive per platform (Linux
+and macOS, amd64 and arm64) holding the three collectors, writes `SHA256SUMS`,
+attests how they were built, and leaves a draft release. Publishing the draft
+creates the `v<version>` tag. The module tags (`api/v<version>`,
+`sdk/go/v<version>` and so on) are made by hand at the same commit.
