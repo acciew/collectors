@@ -39,12 +39,12 @@ jobs:
         run: |
           set -eu
           [ "$GITHUB_REF" = refs/heads/main ] || { echo "releases are cut from main, not $GITHUB_REF" >&2; exit 1; }
-          # Semantic versioning, as Go requires of a module tag. Checked here as
+          # Semantic versioning at v0 or v1, as a module tag without /vN needs. Checked here as
           # well as in task dist, so a typo fails before CI runs. grep reads a
           # line at a time, so the characters are checked first.
           case "$VERSION" in *[!0-9A-Za-z.-]*) echo "version has characters a version does not" >&2; exit 1 ;; esac
           id='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-          echo "$VERSION" | grep -Eq "^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?\$" || {
+          echo "$VERSION" | grep -Eq "^[01]\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?\$" || {
             echo "version must look like 0.1.1, without the v; got \"$VERSION\"" >&2
             exit 1
           }
@@ -66,6 +66,11 @@ jobs:
         run: |
           mkdir -p bin
           GOWORK=off GOBIN="$PWD/bin" go -C tools install tool
+
+      # Consumers ignore this repository's replace directives, so a plugin that
+      # still requires the previous SDK would ship, to them, with the previous SDK.
+      - name: Every module requires its siblings at this version
+        run: ./bin/task release:check VERSION="$VERSION"
 
       # The commit passed CI when it merged; this is today's answer, which
       # matters most for the vulnerability scan.

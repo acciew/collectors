@@ -124,6 +124,24 @@ tasks:
         done
       - go build -C {{.ROOT_DIR}}/sdk/examples/minimal -o {{.BIN}}/acciew-collector-minimal .
 
+  release:bump:
+    desc: Point every module's requires of its siblings, and the plugins' built-in version, at VERSION (VERSION=0.1.2)
+    requires:
+      vars: [VERSION]
+    env:
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - GOWORK=off go -C {{.ROOT_DIR}}/tools run ./releasecheck -bump -version "$VERSION" -root {{.ROOT_DIR}}
+
+  release:check:
+    desc: Fail unless every module requires its siblings at VERSION, the one being released
+    requires:
+      vars: [VERSION]
+    env:
+      VERSION: "{{.VERSION}}"
+    cmds:
+      - GOWORK=off go -C {{.ROOT_DIR}}/tools run ./releasecheck -version "$VERSION" -root {{.ROOT_DIR}}
+
   dist:
     desc: Build the release archives into ./dist (VERSION=0.1.1; PLATFORMS to narrow)
     requires:
@@ -138,12 +156,12 @@ tasks:
       - |
         set -eu
         version="$VERSION"
-        # Semantic versioning, as Go requires of a module tag. The tag carries
+        # Semantic versioning at v0 or v1, as a module tag without /vN needs. The tag carries
         # the v; the binaries report the number. grep reads a line at a time, so
         # the characters are checked first.
         case "$version" in *[!0-9A-Za-z.-]*) echo "VERSION has characters a version does not" >&2; exit 1 ;; esac
         id='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-        echo "$version" | grep -Eq "^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?\$" || {
+        echo "$version" | grep -Eq "^[01]\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?\$" || {
           echo "VERSION must look like 0.1.1, got \"$version\"" >&2
           exit 1
         }

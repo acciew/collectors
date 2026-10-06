@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/testcontainers/testcontainers-go v0.44.0
-	go.acciew.io/collector/api v0.1.0
-	go.acciew.io/collector/plugins/keycloak v0.1.0
-	go.acciew.io/collector/sdk/go v0.1.0
+	go.acciew.io/collector/api v0.1.1
+	go.acciew.io/collector/plugins/keycloak v0.1.1
+	go.acciew.io/collector/sdk/go v0.1.1
 )
 
 require (

@@ -3,8 +3,8 @@ module go.acciew.io/collector/plugins/keycloak
 go 1.26.0
 
 require (
-	go.acciew.io/collector/api v0.1.0
-	go.acciew.io/collector/sdk/go v0.1.0
+	go.acciew.io/collector/api v0.1.1
+	go.acciew.io/collector/sdk/go v0.1.1
 )
 
 require (

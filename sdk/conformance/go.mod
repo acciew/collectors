@@ -4,8 +4,8 @@ go 1.26.0
 
 require (
 	github.com/hashicorp/go-plugin v1.8.0
-	go.acciew.io/collector/api v0.1.0
-	go.acciew.io/collector/sdk/go v0.1.0
+	go.acciew.io/collector/api v0.1.1
+	go.acciew.io/collector/sdk/go v0.1.1
 	google.golang.org/grpc v1.83.2
 )
 

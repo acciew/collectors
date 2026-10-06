@@ -42,9 +42,20 @@ Every module is tagged together, from one commit, with one version number. The
 test-only `plugins/keycloak/integration` module is the exception: it is never
 tagged.
 
-The binaries are built by the `release` workflow: run it from `main` with a
-version, and it runs everything CI runs, builds one archive per platform (Linux
-and macOS, amd64 and arm64) holding the three collectors, writes `SHA256SUMS`,
-attests how they were built, and leaves a draft release. Publishing the draft
-creates the `v<version>` tag. The module tags (`api/v<version>`,
-`sdk/go/v<version>` and so on) are made by hand at the same commit.
+To release `X`:
+
+1. `./bin/task release:bump VERSION=X` and `./bin/task tidy`, in a pull request
+   of their own, and merge it. Whoever installs a module ignores the replace
+   directives and gets what its `go.mod` requires, so every module has to
+   require its siblings at `vX` before the tags exist. It also moves the
+   built-in version of the plugins, which an unstamped build reports, to
+   `X-dev`. Until the tags exist, `main` requires versions that are not there,
+   so go straight on to steps 2 and 3.
+2. Run the `release` workflow from `main` with `X`. It checks that bump, runs
+   everything CI runs, builds one archive per platform (Linux and macOS, amd64
+   and arm64) holding the three collectors, writes `SHA256SUMS`, attests how
+   they were built, and leaves a draft release.
+3. Tag the commit the workflow ran on, once for each module that is tagged
+   (`api/vX`, `sdk/go/vX`, `sdk/conformance/vX`, `sdk/examples/minimal/vX`,
+   `plugins/keycloak/vX`, `plugins/github/vX`, `plugins/awsiam/vX`), and push
+   the tags. Then publish the draft, which creates `vX`.
