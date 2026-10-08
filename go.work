@@ -13,6 +13,9 @@ toolchain go1.26.8
 //                the reference collector. Its own module on purpose: it proves the SDK is
 //                usable from outside this repository.
 //   ./plugins/*  first-party collectors, built exactly as a third party would build them.
+//   ./cmd/acciew-agent
+//                the agent: a second plugin host, run in a customer's network, that runs
+//                collectors there and uploads what they find over outbound HTTPS.
 //   ./plugins/keycloak/integration
 //                the tests that start a real Keycloak. Its own module so the collector's
 //                go.mod does not carry a container library. Never installed or tagged.
@@ -23,6 +26,7 @@ toolchain go1.26.8
 // targets invoke it with GOWORK=off.
 use (
 	./api
+	./cmd/acciew-agent
 	./plugins/awsiam
 	./plugins/entra
 	./plugins/github

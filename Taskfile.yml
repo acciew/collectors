@@ -114,7 +114,7 @@ tasks:
       - go tool cover -html={{.COVER_DIR}}/coverage.out
 
   build:
-    desc: Build every collector and the reference collector into ./bin
+    desc: Build every collector, the reference collector and the agent into ./bin
     cmds:
       - mkdir -p {{.BIN}}
       - |
@@ -123,6 +123,7 @@ tasks:
           go build -C "$dir" -o {{.BIN}}/acciew-collector-"$(basename "$dir")" .
         done
       - go build -C {{.ROOT_DIR}}/sdk/examples/minimal -o {{.BIN}}/acciew-collector-minimal .
+      - go build -C {{.ROOT_DIR}}/cmd/acciew-agent -o {{.BIN}}/acciew-agent .
 
   release:bump:
     desc: Point every module's requires of its siblings, and the plugins' built-in version, at VERSION (VERSION=0.1.2)
@@ -175,6 +176,9 @@ tasks:
           for dir in {{.ROOT_DIR}}/plugins/*/; do
             go build -C "$dir" -trimpath -ldflags "$flags" -o "$out/acciew-collector-$(basename "$dir")" .
           done
+          # The agent sits beside the collectors it runs: its collectors directory
+          # defaults to the one it is in.
+          go build -C "{{.ROOT_DIR}}/cmd/acciew-agent" -trimpath -ldflags "$flags" -o "$out/acciew-agent" .
           cp {{.ROOT_DIR}}/LICENSE {{.ROOT_DIR}}/NOTICE {{.ROOT_DIR}}/README.md "$out/"
           # Without this, macOS tar adds a ._ metadata file beside every entry.
           COPYFILE_DISABLE=1 tar -C "{{.DIST}}" -czf "$out.tar.gz" "$name"

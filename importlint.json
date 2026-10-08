@@ -44,6 +44,7 @@
         "tools/"
       ],
       "denyDirs": [
+        "cmd/",
         "api/",
         "plugins/",
         "sdk/"
@@ -96,6 +97,28 @@
         "plugins/awsiam/"
       ],
       "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
+    },
+    {
+      "name": "agent-does-not-import-plugins",
+      "from": [
+        "cmd/"
+      ],
+      "denyDirs": [
+        "plugins/"
+      ],
+      "why": "The agent runs whichever collector binary it is pointed at, as a separate process. If it imports a collector, an auditor reading the agent is reading that collector too, and the agent can no longer be released apart from it."
+    },
+    {
+      "name": "nothing-imports-the-agent",
+      "from": [
+        "api/",
+        "sdk/",
+        "plugins/"
+      ],
+      "denyDirs": [
+        "cmd/"
+      ],
+      "why": "The contract, the SDK and the collectors are what an author builds against. If any of them imports the agent, the agent's dependencies become theirs, and a collector can no longer be audited without it."
     }
   ]
 }

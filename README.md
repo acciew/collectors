@@ -7,7 +7,11 @@ anything.
 
 A collector is a separate program. It reads one source, never writes to it, and
 hands what it found to the Acciew host over a local connection. The host, the
-inventory, the review workflow and the web app are not in this repository.
+inventory, the review workflow and the web app are not in this repository, with
+one exception: [`acciew-agent`](cmd/acciew-agent), the host a customer runs in
+their own network for sources the service cannot reach. It is here for the same
+reason the collectors are: it handles credentials, and you should be able to read
+it.
 
 Four collectors are here: Keycloak, GitHub, AWS IAM and Microsoft Entra ID, the
 last of which is in no release yet. They are the first, not the set. The
@@ -50,7 +54,12 @@ and what has not been verified.
     --signer-workflow acciew/collectors/.github/workflows/release.yml
   ```
 - Collectors do not import each other, and the SDK imports no collector. CI
-  enforces both (`importlint.json`).
+  enforces both (`importlint.json`). The agent imports no collector either, and
+  nothing imports the agent.
+- The agent makes outbound HTTPS requests only, holds a key and not a secret, and
+  reads a source credential only from the environment variable or file on its own host that the operator listed.
+  Its README says what it sends, and [`docs/agent-protocol.md`](docs/agent-protocol.md)
+  is the protocol.
 
 ## Layout
 
@@ -60,12 +69,13 @@ sdk/go/               the plugin SDK, what a third-party author imports
 sdk/conformance/      the suite an author runs against their collector
 sdk/examples/minimal/ the reference collector
 plugins/              first-party collectors: keycloak, github, awsiam, entra
+cmd/acciew-agent/     the agent: runs collectors in a customer's network, uploads over HTTPS
 docs/                 decision records, the source mapping, the authoring notes
 tools/                pinned developer tooling
 ```
 
-`api`, `sdk/go`, `sdk/conformance`, `sdk/examples/minimal` and each directory
-under `plugins/` is its own Go module, and all of them are tagged together from
+`api`, `sdk/go`, `sdk/conformance`, `sdk/examples/minimal`, `cmd/acciew-agent` and
+each directory under `plugins/` is its own Go module, and all of them are tagged together from
 one commit. `plugins/keycloak/integration` is also a module, but it is only
 tests: never installed, never tagged. The repository root and `tools/` have
 `go.mod` files for tooling only. Import paths start with `go.acciew.io/collector`.
@@ -78,7 +88,7 @@ Needs Go 1.26+. Docker is needed only for the Keycloak integration test.
 mkdir -p bin && GOWORK=off GOBIN="$PWD/bin" go -C tools install tool
 ./bin/task --list
 ./bin/task ci       # exactly what CI runs
-./bin/task build    # every collector into ./bin
+./bin/task build    # every collector, and the agent, into ./bin
 ```
 
 ## Writing your own collector

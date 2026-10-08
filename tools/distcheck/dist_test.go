@@ -23,6 +23,10 @@ import (
 // built. Run through `task dist:check`, which says where the archives are.
 var collectors = []string{"keycloak", "github", "awsiam", "entra"}
 
+// The agent ships in the same archive, so that its default collectors directory
+// (the one it sits in) holds the collectors it runs.
+const agent = "acciew-agent"
+
 func TestArchives(t *testing.T) {
 	dist := os.Getenv("ACCIEW_DIST")
 	if dist == "" {
@@ -53,6 +57,7 @@ func TestArchives(t *testing.T) {
 			for _, c := range collectors {
 				want = append(want, "acciew-collector-"+c)
 			}
+			want = append(want, agent)
 			var got []string
 			for f := range files {
 				got = append(got, f)
@@ -63,8 +68,14 @@ func TestArchives(t *testing.T) {
 				t.Errorf("archive holds %v, want exactly %v", got, want)
 			}
 
+			type binary struct{ name, file, main, version string }
+			var bins []binary
 			for _, c := range collectors {
-				bin := files["acciew-collector-"+c]
+				bins = append(bins, binary{c, "acciew-collector-" + c, "go.acciew.io/collector/plugins/" + c, c + " " + version})
+			}
+			bins = append(bins, binary{agent, agent, "go.acciew.io/collector/cmd/acciew-agent", agent + " " + version})
+			for _, b := range bins {
+				c, bin := b.name, files[b.file]
 				if bin == "" {
 					continue
 				}
@@ -73,8 +84,8 @@ func TestArchives(t *testing.T) {
 					t.Errorf("%s: no build information: %v", c, err)
 					continue
 				}
-				if want := "go.acciew.io/collector/plugins/" + c; info.Main.Path != want {
-					t.Errorf("%s: built from %s, want %s", c, info.Main.Path, want)
+				if info.Main.Path != b.main {
+					t.Errorf("%s: built from %s, want %s", c, info.Main.Path, b.main)
 				}
 				set := map[string]string{}
 				for _, s := range info.Settings {
@@ -87,8 +98,8 @@ func TestArchives(t *testing.T) {
 				// every platform is built by the same line.
 				if goos == runtime.GOOS && goarch == runtime.GOARCH {
 					out, err := exec.Command(bin, "--version").Output()
-					if want := c + " " + version; err != nil || strings.TrimSpace(string(out)) != want {
-						t.Errorf("%s --version printed %q (err %v), want %q", c, out, err, want)
+					if err != nil || strings.TrimSpace(string(out)) != b.version {
+						t.Errorf("%s --version printed %q (err %v), want %q", c, out, err, b.version)
 					}
 				}
 				for key, want := range map[string]string{
@@ -138,7 +149,7 @@ func unpack(t *testing.T, path, top string) map[string]string {
 			t.Errorf("unexpected entry %q outside %s/", h.Name, top)
 			continue
 		}
-		if strings.HasPrefix(rel, "acciew-collector-") && h.Mode&0o111 == 0 {
+		if (strings.HasPrefix(rel, "acciew-collector-") || rel == agent) && h.Mode&0o111 == 0 {
 			t.Errorf("%s is not executable", rel)
 		}
 		dst := filepath.Join(dir, rel)

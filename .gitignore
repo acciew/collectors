@@ -8,6 +8,7 @@
 # defence: it reads the first bytes of every tracked file, so a new example
 # whose entry is missing here fails the build rather than shipping 18 MB.
 /sdk/examples/minimal/minimal
+/cmd/acciew-agent/acciew-agent
 
 # Test + coverage artefacts
 /.cover/

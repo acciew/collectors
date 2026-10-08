@@ -64,3 +64,25 @@ plugins/awsiam/internal/iam     50
 # collector's README.
 plugins/entra/internal/collect 85
 plugins/entra/internal/graph   80
+
+# The agent: a second plugin host, run in a customer's network. What is gated is
+# the logic whose mistake leaks a credential or loses a collection: what is
+# signed and stored of the agent's identity, what is resolved into a collector's
+# hands, how a stream is framed, spooled and uploaded, and how a job ends. The
+# end-to-end tests drive the real agent loop and the real collectors against a
+# fake service, so a test in one package counts toward the code it exercises in
+# the others.
+cmd/acciew-agent/internal/cli 85
+cmd/acciew-agent/internal/identity 85
+cmd/acciew-agent/internal/state    85
+cmd/acciew-agent/internal/client    85
+cmd/acciew-agent/internal/session   85
+cmd/acciew-agent/internal/lifecycle 85
+cmd/acciew-agent/internal/chunk     85
+cmd/acciew-agent/internal/spool     85
+cmd/acciew-agent/internal/secrets   85
+cmd/acciew-agent/internal/backoff   85
+cmd/acciew-agent/internal/host      85
+cmd/acciew-agent/internal/job       85
+cmd/acciew-agent/internal/loop      85
+cmd/acciew-agent/internal/pathid    85

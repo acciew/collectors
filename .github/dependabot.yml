@@ -5,6 +5,7 @@ updates:
   - package-ecosystem: gomod
     directories:
       - "/api"
+      - "/cmd/acciew-agent"
       - "/sdk/go"
       - "/sdk/conformance"
       - "/sdk/examples/minimal"
