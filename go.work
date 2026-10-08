@@ -1,6 +1,6 @@
 go 1.26.0
 
-toolchain go1.26.8
+toolchain go1.26.9
 
 // One module per independently versioned artefact. Every module is tagged
 // together, from one commit, so one version number names one state of all of them.
