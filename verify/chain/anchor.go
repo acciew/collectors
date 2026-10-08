@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+
+	"go.acciew.io/collector/verify/internal/text"
 )
 
 // AnchorFormat is the one anchor format this verifier reads.
@@ -31,7 +33,7 @@ type Anchor struct {
 func ReadAnchor(r io.Reader) (Anchor, error) {
 	raw, err := io.ReadAll(io.LimitReader(r, maxAnchor+1))
 	if err != nil {
-		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor cannot be read: %v", err)
+		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor cannot be read: %s", text.Plain(err))
 	}
 	if len(raw) > maxAnchor {
 		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor is longer than an anchor of format %d may be (%d bytes)", AnchorFormat, maxAnchor)
@@ -80,18 +82,57 @@ func formatFault(raw json.RawMessage) *Error {
 // An empty log and no anchor agree. Anything else that is not the last entry
 // named exactly is a fault, told apart by how it differs.
 func CheckAnchor(entries []Entry, a *Anchor) error {
-	if a == nil {
-		if len(entries) == 0 {
-			return nil
+	check := NewAnchorCheck(a)
+	for _, e := range entries {
+		if err := check.Add(e); err != nil {
+			return err
 		}
-		return fault(ReasonAnchorMissing, 0,
-			"the log has %d entries and no anchor: one of the two was removed", len(entries))
 	}
-	if len(entries) == 0 {
+	return check.Done()
+}
+
+// AnchorCheck is CheckAnchor for a reader that does not hold the log. It keeps
+// the last entry and the chain value at the position the anchor names, so what
+// it holds does not grow with the log.
+type AnchorCheck struct {
+	anchor *Anchor
+	count  uint64
+	last   Entry
+	// at is the chain value of the entry at the position the anchor names, and
+	// seen says there was one.
+	at   string
+	seen bool
+}
+
+// NewAnchorCheck starts a check against an anchor, or against the absence of
+// one if the anchor is nil.
+func NewAnchorCheck(a *Anchor) *AnchorCheck { return &AnchorCheck{anchor: a} }
+
+// Add takes the next entry, in order. With no anchor it fails at the first one:
+// a log with entries and no anchor needs no more of the log to be said.
+func (c *AnchorCheck) Add(e Entry) error {
+	if c.anchor == nil {
+		return fault(ReasonAnchorMissing, 0, "the log has entries and no anchor: one of the two was removed")
+	}
+	c.count++
+	c.last = e
+	if c.count == c.anchor.Sequence {
+		c.at, c.seen = e.Chain, true
+	}
+	return nil
+}
+
+// Done gives the verdict once the last entry has been added.
+func (c *AnchorCheck) Done() error {
+	a := c.anchor
+	if a == nil {
+		return nil
+	}
+	if c.count == 0 {
 		return fault(ReasonEntriesMissing, a.Sequence,
 			"the anchor names entry %d and the log has no entries: one of the two was removed", a.Sequence)
 	}
-	last := entries[len(entries)-1]
+	last := c.last
 	switch {
 	case a.Sequence > last.Sequence:
 		return fault(ReasonTailCut, last.Sequence,
@@ -99,21 +140,18 @@ func CheckAnchor(entries []Entry, a *Anchor) error {
 				"or the anchor belongs to a longer log", last.Sequence, a.Sequence)
 	case a.Sequence == last.Sequence && a.Chain == last.Chain:
 		return nil
-	case a.Sequence < last.Sequence && heldAt(entries, a):
+	case a.Sequence < last.Sequence && c.seen && c.at == a.Chain:
 		return fault(ReasonAnchorStale, a.Sequence,
 			"the log ends at entry %d and the anchor names entry %d, which is in the log: "+
 				"the anchor is behind it", last.Sequence, a.Sequence)
-	}
-	if a.Sequence < 1 || a.Sequence > uint64(len(entries)) {
+	case !c.seen:
+		noun := "entries"
+		if c.count == 1 {
+			noun = "entry"
+		}
 		return fault(ReasonAnchorMismatch, a.Sequence,
-			"the log has %d entries, numbered from 1, and the anchor names entry %d", len(entries), a.Sequence)
+			"the log has %d %s, numbered from 1, and the anchor names entry %d", c.count, noun, a.Sequence)
 	}
 	return fault(ReasonAnchorMismatch, a.Sequence,
-		"entry %d is %s in the log and %s in the anchor", a.Sequence, short(entries[a.Sequence-1].Chain), short(a.Chain))
-}
-
-// heldAt says whether the log holds the very chain value the anchor names, at
-// the position it names.
-func heldAt(entries []Entry, a *Anchor) bool {
-	return a.Sequence >= 1 && a.Sequence <= uint64(len(entries)) && entries[a.Sequence-1].Chain == a.Chain
+		"entry %d is %s in the log and %s in the anchor", a.Sequence, short(c.at), short(a.Chain))
 }

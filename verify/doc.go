@@ -6,6 +6,7 @@
 // docs/evidence-format.md; the packages below implement that document.
 //
 //   - chain: the hash chain over log entries and the anchor that names its end.
+//   - collection: the collection log, its canonical form and digest, and its reader.
 //
 // A check that passes shows that the files agree with each other. It does not
 // show who wrote them or when, and the README says what else it cannot show.

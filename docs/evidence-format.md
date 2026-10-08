@@ -21,12 +21,14 @@ Say "hash-chained, checkable against itself". Do not describe it as proof agains
 - Text is UTF-8. A hash is taken over the bytes of a string exactly as written here.
 - A hash is written as lowercase hexadecimal. Hashes are compared as strings, byte for byte,
   and are never case-folded.
-- A number is a non-negative integer in decimal without a sign, a fraction or an exponent.
-- An instant is written as RFC 3339 in UTC: `YYYY-MM-DDTHH:MM:SS`, then a fraction only if the
-  nanosecond part is not zero, then `Z`. The fraction is a dot and the digits of the
-  nanoseconds with trailing zeros removed, so half a second is `.5` and a second and a
-  millisecond is `.001`. Years run from 0000 to 9999. An instant that is given with an offset
-  is the same instant, and is written in UTC before it is hashed.
+- A number is an integer in decimal, with no plus sign, fraction, exponent or leading zeros. A
+  position (`sequence`) is never negative.
+- An instant is written as RFC 3339: `YYYY-MM-DDTHH:MM:SS`, then a fraction only if the
+  nanosecond part is not zero, then `Z` for UTC or an offset such as `+02:00`. The fraction is
+  a dot and the digits of the nanoseconds with trailing zeros removed, so half a second is `.5`
+  and a second and a millisecond is `.001`. Years run from 0000 to 9999. In anything that is
+  hashed, an instant is first converted to UTC and written with `Z`; an instant given with an
+  offset is the same instant.
 
 ## The chain
 
@@ -142,6 +144,212 @@ Run after the log itself has been checked. With *last* the final entry of the lo
 `tail-cut` is entries removed from the end, or an anchor that belongs to a longer log.
 `anchor-stale` is an anchor that was not brought up to date, or an older one put back. Both
 are failures: the anchor must name the last entry exactly.
+
+## Strings
+
+Wherever this document says a string is written, it is written as a JSON string in exactly
+this way, which is the way Go's `encoding/json` writes one. Hexadecimal digits are lowercase.
+
+| The character                              | Is written as                      |
+|--------------------------------------------|------------------------------------|
+| `"`                                        | `\"`                               |
+| `\`                                        | `\\`                               |
+| U+0008, U+000C, U+000A, U+000D, U+0009     | `\b`, `\f`, `\n`, `\r`, `\t`       |
+| any other of U+0000 to U+001F              | `\u00xx`, for example `\u001f`     |
+| `<`, `>`, `&`                              | `\u003c`, `\u003e`, `\u0026`       |
+| U+2028, U+2029                             | `\u2028`, `\u2029`                 |
+| anything else, including `/`, U+007F and every non-ASCII character | itself, as UTF-8 |
+
+A byte that is not part of a valid UTF-8 sequence is written as the six characters `\ufffd`,
+once for each such byte, where a genuine U+FFFD is written as itself. A writer never records a
+string that is not valid UTF-8, and a verifier refuses a line that is not, so this only
+settles what a program that is handed one must write. Text is compared and sorted as the bytes
+of its UTF-8.
+
+## The collection log
+
+A collection log is two files that share a name: `<name>.jsonl`, the entries, and
+`<name>.head`, its anchor ([The anchor](#the-anchor)). A name is 1 to 128 bytes, is not `.` or
+`..`, and contains none of `/`, `\` and NUL.
+
+An entry is one line of the log, and the log ends with a line feed. There are no empty lines.
+A line is valid UTF-8 and holds one JSON object, written with no whitespace between tokens and
+with the members in the order below. Strings are written as above and numbers as the Conventions say. A list is `[` and `]` around its
+items separated by `,`.
+
+Instants in a line are written as the Conventions say, with `Z` for UTC. A line may carry
+another offset, as `+02:00`; the instant it names is the one that is hashed.
+
+| Member        | Value                                                                          |
+|---------------|--------------------------------------------------------------------------------|
+| `sequence`    | As in [the chain](#the-chain).                                                 |
+| `recorded_at` | As in the chain.                                                               |
+| `digest`      | The digest of `run`: see below.                                                |
+| `previous`    | As in the chain.                                                               |
+| `chain`       | As in the chain.                                                               |
+| `run`         | An object: one collection.                                                     |
+
+`run` has these members. A number marked *int32* is in the range of a signed 32-bit integer
+and one marked *int64* in that of a signed 64-bit integer; a number outside its range is
+refused.
+
+| Member       | Value                                                                              |
+|--------------|------------------------------------------------------------------------------------|
+| `source`     | A string: the collector that produced it.                                          |
+| `started_at` | An instant: when the collection began.                                             |
+| `whole`      | `true` or `false`.                                                                 |
+| `verdict`    | An *int32*. An enumeration, written as its number.                                 |
+| `cause`      | An *int32*. An enumeration.                                                        |
+| `scopes`     | A list of scopes, or `null`. An empty list means the same as `null`.               |
+| `counts`     | An object with the *int64* members `identities`, `groupings`, `entitlements`, `resources`, `grants`, `referenced`, in that order. |
+| `observed`   | A list of grants, or `null`. An empty list means the same as `null`.               |
+
+A **scope** has the members `id` (a string), `status` (an *int32*), `reason` (a string, left
+out when empty), `activity_available` (a boolean) and `activity_undetermined` (a boolean, left
+out when false), in that order.
+
+A **grant** has the members `identity` (a key), `entitlement` (a key), `fidelity` (an *int32*)
+and `via` (a list of keys, left out when empty), in that order.
+
+A **key** has the members `scope` (a string), `type` (an *int32*) and `id` (a string), in that
+order.
+
+A line that is not exactly this is refused: a member that is not listed, a repeated or missing
+one, a member in another order, in another case or spelled with an escape, a member written
+out that is to be left out, a `null` where a value is required, a value of another kind or
+outside its range, other spacing, or a time written any other way than as above. A verifier
+that read such a line leniently would read something other than what another reader reads.
+
+### The digest
+
+The digest of an entry is the SHA-256 of the UTF-8 text of the **canonical form** of its `run`,
+as lowercase hexadecimal. It is taken over the record and not over the line, so that how a line
+happens to be spaced or ordered cannot change it.
+
+### The canonical form
+
+The canonical form is JSON written as the Strings section says, with no whitespace, with these
+members in this order and no others:
+
+```
+{"source": …, "started_at": …, "whole": …, "verdict": …, "cause": …,
+ "scopes": …, "counts": …, "observed": …}
+```
+
+- `source`, `whole`, `verdict`, `cause` and `counts` are as in the line. `verdict`, `cause`,
+  every `status` and every `fidelity` are numbers, never words.
+- `started_at` is the instant in UTC, written as the Conventions say, with the fraction Go
+  prints: `.5` and not `.500`, `.000000001` for one nanosecond, no fraction at all for a whole
+  second.
+- `scopes` is a list of scopes in order of `id`, compared as bytes, or `null` if there are none.
+  Each scope is the object with `id`, `status`, `reason`, `activity_available` and, only when it
+  is true, `activity_undetermined`, in that order. `reason` is always present, as `""` when it is
+  empty. Scopes with the same `id` are put in the order of the bytes of that object as it is
+  written, so the order is total whatever order the run gave them in.
+- `observed` is a list of grants in the order below, or `null` if there are none. Each grant has
+  `identity` and `entitlement`, each the **text of a key** (below), then `fidelity`, then `via`:
+  a list of the texts of its keys in the order the run gives them, or `null` if it has none.
+
+The **text of a key** is `<scope>/<type name>/<id>`, the three parts joined by `/` and none of
+them escaped or checked. The type name is, by the type's number:
+
+| Type | 1        | 2        | 3           | 4        | 5     | 0           | any other number *N*  |
+|------|----------|----------|-------------|----------|-------|-------------|-----------------------|
+| Name | identity | grouping | entitlement | resource | scope | unspecified | `unrecognised(N)`     |
+
+with *N* in decimal, and a minus sign if it is negative. A new type of node, with a name, is a
+new format. Until then a number with no name is hashed as `unrecognised(N)`.
+
+The **order of grants** is the order of this text for each grant, compared as bytes:
+
+```
+<identity text> NUL <entitlement text> NUL <via texts joined by ">"> NUL <fidelity in decimal>
+```
+
+where `NUL` is the byte U+0000. Each part is followed by a NUL so that one part cannot run into
+the next: `s/identity/a` comes before `s/identity/a0` because NUL is below `0`, and without it
+the order would be the other way about.
+
+A `>` or a NUL inside the text of a key can make two different grants read alike. Grants whose
+text is equal are put in the order of the bytes of the grant as the canonical form writes it, the
+object `{"identity":…,"entitlement":…,"fidelity":…,"via":…}`. Grants that are equal there too are
+the same record, so the order is total and the digest does not depend on the order the grants
+arrived in. For example, a route through one key whose `id` is `g>s/grouping/h` and a route
+through two keys, `g` and `h`, read alike; the route through two comes first, because after
+`"via":["s/grouping/g` it has `"` where the other has `\u003e`.
+
+### Worked examples
+
+A collection with one scope, one grant and a route of one key:
+
+```json
+{"source":"keycloak","started_at":"2026-09-05T12:00:00Z","whole":true,"verdict":1,"cause":0,"scopes":[{"id":"realm-a","status":1,"reason":"","activity_available":true}],"counts":{"identities":4,"groupings":1,"entitlements":2,"resources":0,"grants":5,"referenced":0},"observed":[{"identity":"realm-a/identity/alice","entitlement":"realm-a/entitlement/admin","fidelity":2,"via":["realm-a/grouping/platform"]}]}
+```
+
+Its digest is `7b1fcc8b50238a323ca9dafdb2edf97507bca262746b1f2f4a833e2db44d0285`, which can be
+checked with `printf '%s' '<the line above>' | shasum -a 256`.
+
+A collection with nothing in it but a name that needs escaping, `a<b>&c`, U+2028 and `é`, and a start
+time given with an offset, `2026-01-02T05:04:05.25+02:00`:
+
+```json
+{"source":"a\u003cb\u003e\u0026c\u2028é","started_at":"2026-01-02T03:04:05.25Z","whole":false,"verdict":0,"cause":0,"scopes":null,"counts":{"identities":0,"groupings":0,"entitlements":0,"resources":0,"grants":0,"referenced":0},"observed":null}
+```
+
+Its digest is `495983f446860798f67b7af20866ea989b1cd8e9c4fa8bfcb00f98a91ee99ab8`. The `\u2028`
+is the six characters, not the separator.
+
+### Checking a collection log
+
+A verifier reads the anchor first, then the lines in order, and names the first fault it comes
+to:
+
+1. **Anchor.** The anchor is read as [Reading an anchor](#reading-an-anchor) says. An anchor that
+   is not in format 1 is `format`, and one that is not in the form anchors are written in is
+   `unreadable`, before any line of the log is read. A missing anchor is not yet a fault.
+2. **Line.** For each line in turn: it ends with a line feed, is not empty, is valid UTF-8, is no
+   longer than the verifier's bound, and is exactly an entry as above. A line past the bound is
+   refused and not skipped; the bound is a property of the verifier, and the reference verifier
+   takes lines of up to 64 MiB unless it is told more.
+3. **Digest.** The entry's `digest` is the digest of its `run`.
+4. **Chain.** Position, link and value, as in [Checking a log](#checking-a-log).
+5. **No anchor.** If there is no anchor, the first entry that has passed the three checks above is
+   `anchor-missing`, and nothing after it is read.
+6. **Anchor against the entries.** After the last line, the anchor is checked against the
+   entries, as in [Checking an anchor against a log](#checking-an-anchor-against-a-log).
+
+So when faults coexist, the one named is the first in this order: a log with no anchor and a fault
+in its first entry is that fault, and one with no anchor and a fault in its third entry is
+`anchor-missing`; an anchor in a format this verifier does not know is `format` whatever the lines
+hold. An entry is judged as an entry before it is judged against the anchor. A reimplementation
+that reads the lines first and the anchor after would name a different fault in these cases.
+
+A log without a final line feed is refused as cut short: a line that was being written when
+something stopped is not an entry, and is not skipped.
+
+A log that is missing, an anchor that cannot be read, or a file that is a link, a directory or
+a device is `unreadable`: that says the verifier could not check, and nothing about the log.
+
+## Reason codes
+
+A verifier names what it found with one of these. They are stable names: a program may switch on
+them, and the test vectors name them.
+
+| Code              | Meaning                                                                         |
+|-------------------|---------------------------------------------------------------------------------|
+| `name`            | The name is not one a log can have.                                             |
+| `unreadable`      | A file is missing, is not a plain file or cannot be read; or an anchor is not in the form anchors are written in. |
+| `line`            | A line is not an entry in the form above.                                       |
+| `digest`          | An entry's `run` is not the one its `digest` is of.                             |
+| `sequence`        | An entry is not at the position its `sequence` says.                           |
+| `link`            | An entry does not name the one before it.                                       |
+| `chain-value`     | An entry's `chain` is not the value its fields give.                            |
+| `anchor-missing`  | There are entries and no anchor.                                                |
+| `entries-missing` | There is an anchor and no entries.                                              |
+| `tail-cut`        | The anchor names an entry past the end of the log.                              |
+| `anchor-stale`    | The anchor names an entry before the end of the log.                            |
+| `anchor-mismatch` | The anchor and the log name different chain values for one entry.               |
+| `format`          | The anchor is in a format this verifier does not know.                          |
 
 ## Compatibility
 

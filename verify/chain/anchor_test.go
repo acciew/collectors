@@ -3,8 +3,10 @@ package chain_test
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"go.acciew.io/collector/verify/chain"
 )
@@ -270,5 +272,75 @@ func TestAnAnchorNamingNoEntryAtAllSaysWhatEachSideHolds(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "nothing") {
 		t.Errorf("error = %q: both sides read as nothing", err)
+	}
+}
+
+// A reader over a file fails with the file's path in its error. The path came
+// from outside and is not printed raw.
+func TestAReadErrorDoesNotPrintThePathItCarries(t *testing.T) {
+	fail := &fs.PathError{Op: "read", Path: "/tmp/a\x1b[2Jb\xe2\x80\xaec", Err: errors.New("input/output error")}
+	_, err := chain.ReadAnchor(iotest.ErrReader(fail))
+	if err == nil || reason(t, err) != chain.ReasonUnreadable {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.ContainsAny(err.Error(), "\x1b") || strings.Contains(err.Error(), "\xe2\x80\xae") || strings.Contains(err.Error(), "/tmp/a") {
+		t.Errorf("error = %q", err)
+	}
+	if !strings.Contains(err.Error(), "input/output error") {
+		t.Errorf("error = %q: it does not say what failed", err)
+	}
+}
+
+// A reader that streams a log judges the anchor holding two entries and not the
+// log; the verdicts are those of CheckAnchor.
+func TestAnAnchorCheckGivesTheVerdictsOfCheckAnchorEntryByEntry(t *testing.T) {
+	entries := log(t)
+	cases := map[string]*chain.Anchor{
+		"on the last entry":   anchorOf(t, 2),
+		"behind the log":      anchorOf(t, 1),
+		"past the log":        {Format: 1, Sequence: 4, Chain: c3},
+		"another chain value": {Format: 1, Sequence: 2, Chain: c3},
+		"at sequence 0":       {Format: 1},
+		"no anchor":           nil,
+	}
+	for name, anchor := range cases {
+		t.Run(name, func(t *testing.T) {
+			check := chain.NewAnchorCheck(anchor)
+			var streamed error
+			for _, e := range entries {
+				if streamed = check.Add(e); streamed != nil {
+					break
+				}
+			}
+			if streamed == nil {
+				streamed = check.Done()
+			}
+			whole := chain.CheckAnchor(entries, anchor)
+			if (streamed == nil) != (whole == nil) || (whole != nil && reason(t, streamed) != reason(t, whole)) {
+				t.Errorf("streamed = %v, whole = %v", streamed, whole)
+			}
+		})
+	}
+}
+
+func TestWithNoAnchorTheFirstEntryIsEnoughToSayThereIsNone(t *testing.T) {
+	check := chain.NewAnchorCheck(nil)
+	if err := check.Done(); err != nil {
+		t.Errorf("a log of nothing and no anchor: %v", err)
+	}
+	err := check.Add(log(t)[0])
+	if err == nil || reason(t, err) != chain.ReasonAnchorMissing {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestTheCountOfEntriesAgreesInNumber(t *testing.T) {
+	one := chain.CheckAnchor(log(t)[:1], &chain.Anchor{Format: 1, Sequence: 0})
+	if one == nil || !strings.Contains(one.Error(), "the log has 1 entry,") {
+		t.Errorf("one entry: %v", one)
+	}
+	three := chain.CheckAnchor(log(t), &chain.Anchor{Format: 1, Sequence: 0})
+	if three == nil || !strings.Contains(three.Error(), "the log has 3 entries,") {
+		t.Errorf("three entries: %v", three)
 	}
 }
