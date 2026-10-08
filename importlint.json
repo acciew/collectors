@@ -109,6 +109,20 @@
       "why": "The agent runs whichever collector binary it is pointed at, as a separate process. If it imports a collector, an auditor reading the agent is reading that collector too, and the agent can no longer be released apart from it."
     },
     {
+      "name": "verify-stays-standalone",
+      "from": [
+        "verify/"
+      ],
+      "denyDirs": [
+        "api/",
+        "sdk/",
+        "plugins/",
+        "cmd/",
+        "tools/"
+      ],
+      "why": "An auditor reads the verifier to decide whether to rely on its answer, so it has to be readable on its own. If it imports anything of ours, they are reading that too, and a change there can change what it accepts. It uses the standard library only."
+    },
+    {
       "name": "nothing-imports-the-agent",
       "from": [
         "api/",
@@ -119,6 +133,20 @@
         "cmd/"
       ],
       "why": "The contract, the SDK and the collectors are what an author builds against. If any of them imports the agent, the agent's dependencies become theirs, and a collector can no longer be audited without it."
+    },
+    {
+      "name": "nothing-imports-verify",
+      "from": [
+        "api/",
+        "sdk/",
+        "plugins/",
+        "cmd/",
+        "tools/"
+      ],
+      "denyDirs": [
+        "verify/"
+      ],
+      "why": "The verifier is released and read apart from the collectors. If the contract, the SDK, a collector or the agent imports it, a change to the verifier changes what that code does, and none of them can be audited without it."
     }
   ]
 }

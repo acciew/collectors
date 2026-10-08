@@ -86,3 +86,8 @@ cmd/acciew-agent/internal/host      85
 cmd/acciew-agent/internal/job       85
 cmd/acciew-agent/internal/loop      85
 cmd/acciew-agent/internal/pathid    85
+
+# The evidence verifier. An auditor relies on what it reports, so a check that
+# does not catch what it claims to catch is the failure that matters: each is
+# driven with a log altered in one specific way and must name it.
+verify 90

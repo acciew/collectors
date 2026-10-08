@@ -16,6 +16,8 @@ toolchain go1.26.8
 //   ./cmd/acciew-agent
 //                the agent: a second plugin host, run in a customer's network, that runs
 //                collectors there and uploads what they find over outbound HTTPS.
+//   ./verify     the evidence verifier: reads an exported evidence format and checks it
+//                against itself. Standard library only, and depends on nothing of ours.
 //   ./plugins/keycloak/integration
 //                the tests that start a real Keycloak. Its own module so the collector's
 //                go.mod does not carry a container library. Never installed or tagged.
@@ -35,4 +37,5 @@ use (
 	./sdk/conformance
 	./sdk/examples/minimal
 	./sdk/go
+	./verify
 )
