@@ -51,3 +51,16 @@ plugins/github/internal/api     80
 # with real logic in it: trust policies and the credential report.
 plugins/awsiam/internal/collect 85
 plugins/awsiam/internal/iam     50
+
+# The Entra collector. Its collection is where a role held through a group
+# becomes a derived grant, and where Graph's silences (an id-only member, a
+# blank sign-in, a missing property) have to stay distinguishable from a
+# definite answer: read a missing accountEnabled as "disabled" and every grant
+# the user holds is skipped in review.
+#
+# The graph package is the client. It is exercised against a fake Graph that
+# issues real tokens and verifies real client assertions, so what is not
+# covered is what only a live tenant can answer, and it is listed in the
+# collector's README.
+plugins/entra/internal/collect 85
+plugins/entra/internal/graph   80

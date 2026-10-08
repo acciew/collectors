@@ -56,7 +56,8 @@
       ],
       "denyDirs": [
         "plugins/github/",
-        "plugins/awsiam/"
+        "plugins/awsiam/",
+        "plugins/entra/"
       ],
       "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
     },
@@ -67,7 +68,8 @@
       ],
       "denyDirs": [
         "plugins/keycloak/",
-        "plugins/awsiam/"
+        "plugins/awsiam/",
+        "plugins/entra/"
       ],
       "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
     },
@@ -78,7 +80,20 @@
       ],
       "denyDirs": [
         "plugins/keycloak/",
-        "plugins/github/"
+        "plugins/github/",
+        "plugins/entra/"
+      ],
+      "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
+    },
+    {
+      "name": "plugin-entra-does-not-import-other-plugins",
+      "from": [
+        "plugins/entra/"
+      ],
+      "denyDirs": [
+        "plugins/keycloak/",
+        "plugins/github/",
+        "plugins/awsiam/"
       ],
       "why": "Each collector is its own module and its own binary. If one imports another, a buyer auditing the Keycloak collector is auditing the GitHub one too, and the two can no longer be released apart. A new collector adds a rule here."
     }

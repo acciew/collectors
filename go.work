@@ -24,6 +24,7 @@ toolchain go1.26.8
 use (
 	./api
 	./plugins/awsiam
+	./plugins/entra
 	./plugins/github
 	./plugins/keycloak
 	./plugins/keycloak/integration

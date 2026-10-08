@@ -12,6 +12,7 @@ updates:
       - "/plugins/keycloak/integration"
       - "/plugins/github"
       - "/plugins/awsiam"
+      - "/plugins/entra"
       - "/tools"
     schedule:
       interval: weekly

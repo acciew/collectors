@@ -53,9 +53,10 @@ To release `X`:
    so go straight on to steps 2 and 3.
 2. Run the `release` workflow from `main` with `X`. It checks that bump, runs
    everything CI runs, builds one archive per platform (Linux and macOS, amd64
-   and arm64) holding the three collectors, writes `SHA256SUMS`, attests how
+   and arm64) holding the collectors, writes `SHA256SUMS`, attests how
    they were built, and leaves a draft release.
 3. Tag the commit the workflow ran on, once for each module that is tagged
    (`api/vX`, `sdk/go/vX`, `sdk/conformance/vX`, `sdk/examples/minimal/vX`,
-   `plugins/keycloak/vX`, `plugins/github/vX`, `plugins/awsiam/vX`), and push
-   the tags. Then publish the draft, which creates `vX`.
+   `plugins/keycloak/vX`, `plugins/github/vX`, `plugins/awsiam/vX`,
+   `plugins/entra/vX`), and push the tags. Then publish the draft, which
+   creates `vX`.

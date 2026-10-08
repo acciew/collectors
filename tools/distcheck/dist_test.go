@@ -21,7 +21,7 @@ import (
 // against their systems, so what is in them is checked the way they would
 // check it: the files, the digests, and the binary's own account of how it was
 // built. Run through `task dist:check`, which says where the archives are.
-var collectors = []string{"keycloak", "github", "awsiam"}
+var collectors = []string{"keycloak", "github", "awsiam", "entra"}
 
 func TestArchives(t *testing.T) {
 	dist := os.Getenv("ACCIEW_DIST")
