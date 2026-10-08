@@ -330,6 +330,80 @@ something stopped is not an entry, and is not skipped.
 A log that is missing, an anchor that cannot be read, or a file that is a link, a directory or
 a device is `unreadable`: that says the verifier could not check, and nothing about the log.
 
+## The workflow log
+
+A workflow log is the record of what was done in a review: decisions, locks, assignments and
+whatever else the service recorded, one event to an entry. It is two files that share a name,
+`<name>.jsonl` and `<name>.head`, named as for a collection log; in a pack they are
+`workflow/workflow.jsonl` and `workflow/workflow.head`.
+
+A line is written as the lines of a collection log are: valid UTF-8, ending in a line feed, no
+empty lines, one JSON object written with no whitespace between tokens, strings as in
+[Strings](#strings). Its members, in this order, are `sequence`, `recorded_at`, `digest`,
+`previous`, `chain` and `body`. The first five are those of [the chain](#the-chain), with two
+differences: `recorded_at` is always in UTC and written with `Z`, and `digest` is the digest of
+the body.
+
+`body` is the event, a JSON value written compactly: no whitespace outside strings, and `<`, `>`,
+`&`, U+2028 and U+2029 inside strings written as escapes, as in Strings. Nothing else in it is
+respelled: an escape such as `\u0041` stays as it is, and a number stays as the digits it was
+written with.
+
+The **digest** of an entry is the SHA-256 of the bytes of its `body` exactly as they stand in the
+line, from the first byte of the value to the last, as lowercase hexadecimal. It is taken over
+the text and not over a reading of it, so it does not depend on how a program would read a number
+or order the members of an object. For example, the body
+
+```json
+{"type":"pack.built","actor":"admin:1"}
+```
+
+has the digest `b3b19a7a0bdb041196b600216458e41d097d59dc5ef8ac730589fd9c0d5c3510`, which
+`printf '%s' '<the body>' | shasum -a 256` gives. A whole line:
+
+```json
+{"sequence":1,"recorded_at":"2026-10-06T12:00:00.123456Z","digest":"eced2aa288415d40918b78ed356717eeb5578991756990d32889b724232ea053","previous":"","chain":"f14d723a934dc1ca7cb4924961dba37d91c82e7cacd5148ca157556414e302fa","body":{"type":"example.created","actor":"system","data":{"name":"Acme \u003c\u0026\u003e Co"}}}
+```
+
+A line that is not exactly this is refused as a line: a member that is not listed, a repeated or
+missing one, a member in another order, case or spelling, a `null` where a value is required,
+other spacing in the line or the body, a time not in UTC or written another way, or a body with
+`<`, `>`, `&`, U+2028 or U+2029 in a string that is not written as an escape. A line past the
+verifier's bound is refused and not skipped, as in a collection log. JSON nested deeper than ten
+thousand levels is refused, which is the limit of the reference verifier's JSON reader.
+
+### The event
+
+A body is an event: a JSON object with the members `type` and `actor`, each a string that is not
+empty, and, if it has one, `data`, an object. The service writes them in that order, with the
+members of `data` in order of name; a verifier does not require the order, because the digest
+covers the bytes. `type` says what happened, as in `collection.completed`, and `actor` who did it:
+`system`, or a kind and an identifier such as `admin:<id>`. `data` is the rest.
+
+A body that is not an object, has no `type` or no `actor`, has either empty or not a string,
+has `data` that is not an object, or has another member than these three is refused as
+`event`, and so is one that repeats a member, at the top level or in `data`, or spells a member
+name in another case. A member name is compared as the text it stands for, so `"t\u0079pe"` is
+`type`.
+
+A verifier does not interpret `data`, or the type, beyond that: a type it has never heard of is
+chained like any other, and the log is evidence that it was not cut or reordered, and nothing
+more. Which types an evidence pack reads, and what it reads from them, is described with the pack.
+
+### Checking a workflow log
+
+A verifier reads the anchor first and the lines in order, and names the first fault it comes
+to, as for a collection log, with the checks of a line in this order:
+
+1. **Line.** As above.
+2. **Digest.** The `digest` is the digest of the `body`.
+3. **Event.** The body is an event.
+4. **Chain.** Position, link and value, as in [Checking a log](#checking-a-log).
+
+Then, as for a collection log: with no anchor, the first entry that has passed these is
+`anchor-missing`, and after the last line the anchor is checked against the entries. A log
+without a final line feed is refused as cut short.
+
 ## Reason codes
 
 A verifier names what it found with one of these. They are stable names: a program may switch on
@@ -340,9 +414,10 @@ them, and the test vectors name them.
 | `name`            | The name is not one a log can have.                                             |
 | `unreadable`      | A file is missing, is not a plain file or cannot be read; or an anchor is not in the form anchors are written in. |
 | `line`            | A line is not an entry in the form above.                                       |
-| `digest`          | An entry's `run` is not the one its `digest` is of.                             |
+| `digest`          | An entry's `run` (or, in a workflow log, `body`) is not the one its `digest` is of. |
 | `sequence`        | An entry is not at the position its `sequence` says.                           |
 | `link`            | An entry does not name the one before it.                                       |
+| `event`           | A body of a workflow log is not an event.                                       |
 | `chain-value`     | An entry's `chain` is not the value its fields give.                            |
 | `anchor-missing`  | There are entries and no anchor.                                                |
 | `entries-missing` | There is an anchor and no entries.                                              |
