@@ -3,9 +3,9 @@ module go.acciew.io/collector/plugins/entra
 go 1.26.0
 
 require (
-	go.acciew.io/collector/api v0.1.1
-	go.acciew.io/collector/sdk/conformance v0.1.1
-	go.acciew.io/collector/sdk/go v0.1.1
+	go.acciew.io/collector/api v0.2.0
+	go.acciew.io/collector/sdk/conformance v0.2.0
+	go.acciew.io/collector/sdk/go v0.2.0
 	google.golang.org/protobuf v1.36.12
 )
 

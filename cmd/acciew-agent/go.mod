@@ -11,7 +11,7 @@ replace go.acciew.io/collector/sdk/go => ../../sdk/go
 require (
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
-	go.acciew.io/collector/api v0.1.1
+	go.acciew.io/collector/api v0.2.0
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -25,7 +25,7 @@ require (
 )
 
 require (
-	go.acciew.io/collector/sdk/go v0.1.1
+	go.acciew.io/collector/sdk/go v0.2.0
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

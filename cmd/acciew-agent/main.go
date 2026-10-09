@@ -12,7 +12,7 @@ import (
 )
 
 // version is stamped at build time; the default is what a local build reports.
-var version = "0.1.1-dev"
+var version = "0.2.0-dev"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

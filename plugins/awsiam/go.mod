@@ -8,8 +8,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.63.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.49.0
 	github.com/aws/smithy-go v1.28.1
-	go.acciew.io/collector/api v0.1.1
-	go.acciew.io/collector/sdk/go v0.1.1
+	go.acciew.io/collector/api v0.2.0
+	go.acciew.io/collector/sdk/go v0.2.0
 )
 
 require (

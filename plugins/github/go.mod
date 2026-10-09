@@ -9,8 +9,8 @@ replace go.acciew.io/collector/api => ../../api
 replace go.acciew.io/collector/sdk/go => ../../sdk/go
 
 require (
-	go.acciew.io/collector/api v0.1.1
-	go.acciew.io/collector/sdk/go v0.1.1
+	go.acciew.io/collector/api v0.2.0
+	go.acciew.io/collector/sdk/go v0.2.0
 )
 
 require (
