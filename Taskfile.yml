@@ -11,7 +11,8 @@ vars:
   BIN: "{{.ROOT_DIR}}/bin"
   COVER_DIR: "{{.ROOT_DIR}}/.cover"
   MODULE: go.acciew.io/collector
-  PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
+  # windows/* is a zip of the verifier alone; the others are a tar.gz of everything.
+  PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
   # Workspace module directories, read from go.work so this never drifts.
   MODULE_DIRS:
     sh: go list -m -f '{{`{{.Dir}}`}}'
@@ -171,11 +172,31 @@ tasks:
         }
         rm -rf "{{.DIST}}" && mkdir -p "{{.DIST}}"
         flags="-s -w -X main.version=$version"
+        # Built before GOOS is set below: it has to run here.
+        mkdir -p "{{.BIN}}"
+        GOWORK=off go -C "{{.ROOT_DIR}}/tools" build -o "{{.BIN}}/mkzip" ./mkzip
+        archives=
         for platform in {{.PLATFORMS}}; do
-          name="acciew-collectors-$version-${platform%/*}-${platform#*/}"
+          goos="${platform%/*}"
+          goarch="${platform#*/}"
+          export CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch"
+          if [ "$goos" = windows ]; then
+            # Only the verifier: an auditor handed an evidence pack wants to check it, and
+            # the collectors and the agent are not built for Windows. A zip is what Windows opens.
+            name="acciew-verify-$version-$goos-$goarch"
+            out="{{.DIST}}/$name"
+            mkdir -p "$out"
+            go build -C "{{.ROOT_DIR}}/verify" -trimpath -ldflags "$flags" -o "$out/acciew-verify.exe" ./cmd/acciew-verify
+            cp {{.ROOT_DIR}}/LICENSE {{.ROOT_DIR}}/NOTICE {{.ROOT_DIR}}/README.md "$out/"
+            # Fixed times and order, so the same commit makes the same zip.
+            "{{.BIN}}/mkzip" -o "$out.zip" "$out"
+            rm -rf "$out"
+            archives="$archives $name.zip"
+            continue
+          fi
+          name="acciew-collectors-$version-$goos-$goarch"
           out="{{.DIST}}/$name"
           mkdir -p "$out"
-          export CGO_ENABLED=0 GOOS="${platform%/*}" GOARCH="${platform#*/}"
           for dir in {{.ROOT_DIR}}/plugins/*/; do
             go build -C "$dir" -trimpath -ldflags "$flags" -o "$out/acciew-collector-$(basename "$dir")" .
           done
@@ -188,9 +209,11 @@ tasks:
           # Without this, macOS tar adds a ._ metadata file beside every entry.
           COPYFILE_DISABLE=1 tar -C "{{.DIST}}" -czf "$out.tar.gz" "$name"
           rm -rf "$out"
+          archives="$archives $name.tar.gz"
         done
         cd "{{.DIST}}"
-        if command -v sha256sum >/dev/null; then sha256sum -- *.tar.gz; else shasum -a 256 -- *.tar.gz; fi > SHA256SUMS
+        files=$(printf '%s\n' $archives | LC_ALL=C sort)
+        if command -v sha256sum >/dev/null; then sha256sum -- $files; else shasum -a 256 -- $files; fi > SHA256SUMS
 
   dist:check:
     desc: Check the archives the way somebody who downloaded one would

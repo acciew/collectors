@@ -2,9 +2,12 @@ package distcheck_test
 
 import (
 	"archive/tar"
+	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
 	"debug/buildinfo"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -15,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The release archives are what somebody who does not build from source runs
@@ -30,6 +34,21 @@ const agent = "acciew-agent"
 // The verifier ships in it too: an auditor who downloads the archive to check a pack
 // has the command that does it. It is a module of its own, with no dependency of ours.
 const verifier = "acciew-verify"
+
+// For Windows only the verifier ships, in a zip: an auditor there is handed an evidence
+// pack and has no use for the collectors or the agent, which are not built for Windows.
+const windowsExe = verifier + ".exe"
+
+// A zip entry carries a time, and a fixed one keeps a build to the same bytes. This is the
+// earliest time a zip can hold.
+var zipTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// The machine field of a PE file says what the program is for, whatever it is called.
+var peMachine = map[string]uint16{"amd64": 0x8664, "arm64": 0xAA64}
+
+// built is a binary in an archive: the package that is its main, the module that
+// package is in, and what --version says.
+type built struct{ name, file, main, module, version string }
 
 func TestArchives(t *testing.T) {
 	dist := os.Getenv("ACCIEW_DIST")
@@ -51,6 +70,10 @@ func TestArchives(t *testing.T) {
 		goos, goarch, _ := strings.Cut(platform, "/")
 		name := "acciew-collectors-" + version + "-" + goos + "-" + goarch
 		t.Run(platform, func(t *testing.T) {
+			if goos == "windows" {
+				checkWindowsZip(t, dist, sums, version, goarch)
+				return
+			}
 			path := filepath.Join(dist, name+".tar.gz")
 			if got := digest(t, path); sums[name+".tar.gz"] != got {
 				t.Errorf("SHA256SUMS has %q for %s, the file is %s", sums[name+".tar.gz"], name+".tar.gz", got)
@@ -72,56 +95,161 @@ func TestArchives(t *testing.T) {
 				t.Errorf("archive holds %v, want exactly %v", got, want)
 			}
 
-			type binary struct{ name, file, main, module, version string }
-			var bins []binary
+			var bins []built
 			for _, c := range collectors {
-				bins = append(bins, binary{c, "acciew-collector-" + c, "go.acciew.io/collector/plugins/" + c, "go.acciew.io/collector/plugins/" + c, c + " " + version})
+				bins = append(bins, built{c, "acciew-collector-" + c, "go.acciew.io/collector/plugins/" + c, "go.acciew.io/collector/plugins/" + c, c + " " + version})
 			}
-			bins = append(bins, binary{agent, agent, "go.acciew.io/collector/cmd/acciew-agent", "go.acciew.io/collector/cmd/acciew-agent", agent + " " + version})
-			bins = append(bins, binary{verifier, verifier, "go.acciew.io/collector/verify/cmd/acciew-verify", "go.acciew.io/collector/verify", verifier + " " + version})
+			bins = append(bins, built{agent, agent, "go.acciew.io/collector/cmd/acciew-agent", "go.acciew.io/collector/cmd/acciew-agent", agent + " " + version})
+			bins = append(bins, verifierBuild(version))
 			for _, b := range bins {
-				c, bin := b.name, files[b.file]
-				if bin == "" {
-					continue
-				}
-				info, err := buildinfo.ReadFile(bin)
-				if err != nil {
-					t.Errorf("%s: no build information: %v", c, err)
-					continue
-				}
-				// The package that is main, and the module it is in: for a collector they are
-				// the same path, and for the verifier the command is inside its module.
-				if info.Path != b.main || info.Main.Path != b.module {
-					t.Errorf("%s: built from package %s of module %s, want %s of %s", c, info.Path, info.Main.Path, b.main, b.module)
-				}
-				// The verifier is standard library only: nothing else is in the binary.
-				if b.name == verifier && len(info.Deps) != 0 {
-					t.Errorf("%s: built with %d dependencies, want none: %v", c, len(info.Deps), info.Deps)
-				}
-				set := map[string]string{}
-				for _, s := range info.Settings {
-					set[s.Key] = s.Value
-				}
-				// -trimpath keeps the linker flags out of the build information,
-				// so the stamped version is read the way a user would read it:
-				// by asking the binary. Only this machine's own binaries can be
-				// run; one platform proves the flag reaches the variable, as
-				// every platform is built by the same line.
-				if goos == runtime.GOOS && goarch == runtime.GOARCH {
-					out, err := exec.Command(bin, "--version").Output()
-					if err != nil || strings.TrimSpace(string(out)) != b.version {
-						t.Errorf("%s --version printed %q (err %v), want %q", c, out, err, b.version)
-					}
-				}
-				for key, want := range map[string]string{
-					"-trimpath": "true", "CGO_ENABLED": "0", "GOOS": goos, "GOARCH": goarch,
-				} {
-					if set[key] != want {
-						t.Errorf("%s: build setting %s is %q, want %q", c, key, set[key], want)
-					}
+				if files[b.file] != "" {
+					checkBuild(t, b, files[b.file], goos, goarch)
 				}
 			}
 		})
+	}
+}
+
+func verifierBuild(version string) built {
+	return built{verifier, verifier, "go.acciew.io/collector/verify/cmd/acciew-verify", "go.acciew.io/collector/verify", verifier + " " + version}
+}
+
+// checkBuild reads a binary's own account of how it was built.
+func checkBuild(t *testing.T, b built, bin, goos, goarch string) {
+	t.Helper()
+	c := b.name
+	info, err := buildinfo.ReadFile(bin)
+	if err != nil {
+		t.Errorf("%s: no build information: %v", c, err)
+		return
+	}
+	// The package that is main, and the module it is in: for a collector they are
+	// the same path, and for the verifier the command is inside its module.
+	if info.Path != b.main || info.Main.Path != b.module {
+		t.Errorf("%s: built from package %s of module %s, want %s of %s", c, info.Path, info.Main.Path, b.main, b.module)
+	}
+	// The verifier is standard library only: nothing else is in the binary.
+	if b.name == verifier && len(info.Deps) != 0 {
+		t.Errorf("%s: built with %d dependencies, want none: %v", c, len(info.Deps), info.Deps)
+	}
+	set := map[string]string{}
+	for _, s := range info.Settings {
+		set[s.Key] = s.Value
+	}
+	// -trimpath keeps the linker flags out of the build information,
+	// so the stamped version is read the way a user would read it:
+	// by asking the binary. Only this machine's own binaries can be
+	// run; one platform proves the flag reaches the variable, as
+	// every platform is built by the same line.
+	if goos == runtime.GOOS && goarch == runtime.GOARCH {
+		out, err := exec.Command(bin, "--version").Output()
+		if err != nil || strings.TrimSpace(string(out)) != b.version {
+			t.Errorf("%s --version printed %q (err %v), want %q", c, out, err, b.version)
+		}
+	}
+	for key, want := range map[string]string{
+		"-trimpath": "true", "CGO_ENABLED": "0", "GOOS": goos, "GOARCH": goarch,
+	} {
+		if set[key] != want {
+			t.Errorf("%s: build setting %s is %q, want %q", c, key, set[key], want)
+		}
+	}
+}
+
+// checkWindowsZip checks the Windows archive of a platform: listed in SHA256SUMS, holding
+// the verifier and the documents and nothing else, in a fixed order with a fixed time,
+// and the verifier is a Windows executable for the right processor.
+func checkWindowsZip(t *testing.T, dist string, sums map[string]string, version, goarch string) {
+	t.Helper()
+	name := verifier + "-" + version + "-windows-" + goarch
+	path := filepath.Join(dist, name+".zip")
+	if got := digest(t, path); sums[name+".zip"] != got {
+		t.Errorf("SHA256SUMS has %q for %s, the file is %s", sums[name+".zip"], name+".zip", got)
+	}
+
+	files, listed := unzip(t, path, name)
+	want := []string{"LICENSE", "NOTICE", "README.md", windowsExe}
+	if !slices.Equal(listed, want) {
+		t.Errorf("archive holds %v in this order, want exactly %v", listed, want)
+	}
+
+	exe := files[windowsExe]
+	if exe == "" {
+		return
+	}
+	checkPE(t, exe, goarch)
+	checkBuild(t, verifierBuild(version), exe, "windows", goarch)
+}
+
+// unzip writes a zip's files into a temporary directory and returns their paths by name,
+// and the names in the order the zip lists them. It fails on anything but regular files
+// directly in the archive's own directory.
+func unzip(t *testing.T, path, top string) (map[string]string, []string) {
+	t.Helper()
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	dir := t.TempDir()
+	out := map[string]string{}
+	var order []string
+	for _, f := range zr.File {
+		rel, ok := strings.CutPrefix(f.Name, top+"/")
+		if !ok || rel == "" || strings.ContainsAny(rel, "/\\") || !f.Mode().IsRegular() {
+			t.Errorf("unexpected entry %q; the archive holds only files in %s/", f.Name, top)
+			continue
+		}
+		if _, dup := out[rel]; dup {
+			t.Errorf("%s is in the archive twice", rel)
+			continue
+		}
+		if !f.Modified.Equal(zipTime) {
+			t.Errorf("%s is dated %s, want %s", rel, f.Modified.UTC().Format(time.RFC3339), zipTime.Format(time.RFC3339))
+		}
+		if rel == windowsExe && f.Mode()&0o111 == 0 {
+			t.Errorf("%s is not executable", rel)
+		}
+		r, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(dir, rel)
+		w, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY, os.FileMode(f.Mode().Perm()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Reading to the end is what checks the entry against its CRC.
+		if _, err := io.Copy(w, r); err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
+		_ = w.Close()
+		_ = r.Close()
+		out[rel] = dst
+		order = append(order, rel)
+	}
+	return out, order
+}
+
+// checkPE reads the file's headers by hand: it starts "MZ", the offset at 0x3c is a
+// "PE" header, and the machine field in it is the one for the architecture.
+func checkPE(t *testing.T, path, goarch string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(b, []byte("MZ")) || len(b) < 0x40 {
+		t.Errorf("%s does not start with an MZ header", filepath.Base(path))
+		return
+	}
+	off := uint64(binary.LittleEndian.Uint32(b[0x3c:]))
+	if off+6 > uint64(len(b)) || !bytes.Equal(b[off:off+4], []byte("PE\x00\x00")) {
+		t.Errorf("%s has no PE header where the MZ header says", filepath.Base(path))
+		return
+	}
+	if got := binary.LittleEndian.Uint16(b[off+4:]); got != peMachine[goarch] {
+		t.Errorf("%s is for machine %#04x, want %#04x for %s", filepath.Base(path), got, peMachine[goarch], goarch)
 	}
 }
 

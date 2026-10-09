@@ -54,7 +54,8 @@ To release `X`:
    versions that are not there, so go straight on to steps 2 and 3.
 2. Run the `release` workflow from `main` with `X`. It checks that bump, runs
    everything CI runs, builds one archive per platform (Linux and macOS, amd64
-   and arm64) holding the collectors, the agent and the verifier, writes `SHA256SUMS`, attests how
+   and arm64) holding the collectors, the agent and the verifier, and for Windows (amd64 and arm64)
+   a zip holding the verifier alone, writes `SHA256SUMS`, attests how
    they were built, and leaves a draft release.
 3. Tag the commit the workflow ran on, once for each module that is tagged
    (`api/vX`, `sdk/go/vX`, `sdk/conformance/vX`, `sdk/examples/minimal/vX`,

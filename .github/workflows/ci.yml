@@ -70,6 +70,13 @@ jobs:
       - name: Build
         run: ./bin/task build
 
+      # The archives are otherwise built only on release day. One Windows platform is the
+      # verifier alone, so this is cheap, and it runs mkzip and the zip branch of task dist.
+      - name: Windows zip builds and checks
+        run: |
+          ./bin/task dist VERSION=0.0.0-ci PLATFORMS=windows/amd64
+          ./bin/task dist:check VERSION=0.0.0-ci PLATFORMS=windows/amd64
+
       - name: Vulnerability scan
         run: ./bin/task vuln
 

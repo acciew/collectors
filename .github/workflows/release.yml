@@ -122,8 +122,8 @@ jobs:
           set -eu
           printf '%s' "$SUMS" | base64 -d > "$RUNNER_TEMP/SHA256SUMS"
           (cd dist && sha256sum -c "$RUNNER_TEMP/SHA256SUMS")
-          set -- dist/*.tar.gz
-          [ "$#" -eq "$(wc -l < "$RUNNER_TEMP/SHA256SUMS")" ] || {
+          archives=$(find dist -maxdepth 1 \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)
+          [ "$archives" -eq "$(wc -l < "$RUNNER_TEMP/SHA256SUMS")" ] || {
             echo "dist holds archives that were not built" >&2
             exit 1
           }
@@ -147,7 +147,9 @@ jobs:
       - name: Record how the archives were built
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/*.tar.gz
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
 
       - name: Draft the release
         env:
@@ -157,5 +159,5 @@ jobs:
           set -eu
           # A version with a hyphen is a pre-release and must not become "Latest".
           case "$VERSION" in *-*) pre=--prerelease ;; *) pre= ;; esac
-          gh release create "v$VERSION" dist/*.tar.gz dist/SHA256SUMS \
+          gh release create "v$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
             --draft $pre --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes

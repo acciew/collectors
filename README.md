@@ -72,7 +72,24 @@ here. [`verify/README.md`](verify/README.md) says what a pass shows and what it 
 [the decision record](docs/adr/0015-evidence-verifier.md) says why it is built this way.
 
 `acciew-verify` is in each release's archive, beside the collectors and the agent, for Linux and
-macOS on amd64 and arm64, and installs with Go as well, at the version of a release:
+macOS on amd64 and arm64. On Windows, download `acciew-verify-X.Y.Z-windows-amd64.zip` (or `-arm64`)
+from the release: it holds only `acciew-verify.exe` and the licence, notice and README files, in a
+folder named like the zip. Unzip it, then run the program from that folder in a terminal:
+
+```powershell
+cd .\acciew-verify-X.Y.Z-windows-amd64
+.\acciew-verify.exe pack C:\path\to\pack.zip
+```
+
+The zip is listed in `SHA256SUMS` and attested like the other archives. To compare its digest, run this
+in PowerShell with the digest from `SHA256SUMS`; it prints `True` (`Get-FileHash` writes capitals and
+`SHA256SUMS` lower case, and `-eq` ignores case):
+
+```powershell
+(Get-FileHash .\acciew-verify-X.Y.Z-windows-amd64.zip).Hash -eq '<digest from SHA256SUMS>'
+```
+
+The verifier also installs with Go, at the version of a release:
 
 ```sh
 go install go.acciew.io/collector/verify/cmd/acciew-verify@vX.Y.Z
