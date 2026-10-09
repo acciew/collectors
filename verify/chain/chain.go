@@ -60,6 +60,9 @@ const (
 	ReasonUnreadable Reason = "unreadable"
 	// ReasonFormat: the anchor is in a format this verifier does not know.
 	ReasonFormat Reason = "format"
+	// ReasonUnknownMember: the anchor holds a member this verifier does not know,
+	// which may be one a later revision of the format added.
+	ReasonUnknownMember Reason = "unknown-member"
 )
 
 // Error is what a failed check returns. Its text says that the files disagree

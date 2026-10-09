@@ -1,0 +1,6 @@
+! x                chain: the log ends at entry 2 and the anchor names entry 3: entries were removed from the end, or the anchor belongs to a longer log
+
+bound in force: 64 MiB a line (--max-line-bytes)
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

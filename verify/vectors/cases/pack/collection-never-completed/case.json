@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "completed workflow/workflow.jsonl"
+  ],
+  "note": "The collection the lock names has no completion in the workflow log."
+}

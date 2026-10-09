@@ -1,0 +1,12 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "campaign campaign.json",
+    "collection history/conn-1/alpha.jsonl",
+    "completed workflow/workflow.jsonl",
+    "locked workflow/workflow.jsonl"
+  ],
+  "note": "The manifest names an entry the collection log does not hold in that form."
+}

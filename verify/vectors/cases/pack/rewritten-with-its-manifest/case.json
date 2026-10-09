@@ -1,0 +1,6 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": true,
+  "note": "A file changed and the manifest and its list made to agree. Nothing inside a pack ties the manifest to anything: the digest of manifest.json is what to compare with the service's record."
+}

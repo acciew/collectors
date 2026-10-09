@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "unknown-member manifest.json"
+  ],
+  "note": "A member of the manifest that the format does not have. It may be one a later revision added, so the verifier says it is older than the pack and not that anything disagrees."
+}

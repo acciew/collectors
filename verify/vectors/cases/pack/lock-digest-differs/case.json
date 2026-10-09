@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "locked workflow/workflow.jsonl"
+  ],
+  "note": "The lock in the workflow log has another digest than the manifest's lock digest."
+}

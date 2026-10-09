@@ -7,7 +7,7 @@ Go package, so the fixture it writes is a check on the Go code and not a copy
 of it. Standard library only.
 
     python3 fixture.py OUTDIR      write good.jsonl and good.head into OUTDIR
-    python3 fixture.py --vectors   print the digests of the tie examples
+    python3 fixture.py --vectors   print the digests of the tie examples and of a run full of escapes
 
 To regenerate the committed fixture, from verify/collection:
 
@@ -168,7 +168,17 @@ def vectors():
     # Two grants whose ordering texts are equal: one route through a key whose id holds ">".
     a = dict(identity=K('s', 1, 'a'), entitlement=K('s', 3, 'x'), fidelity=1, via=[K('s', 2, 'g>s/grouping/h')])
     b = dict(identity=K('s', 1, 'a'), entitlement=K('s', 3, 'x'), fidelity=1, via=[K('s', 2, 'g'), K('s', 2, 'h')])
+    # A name with every character that needs an escape: backspace, form feed, line feed,
+    # carriage return, tab, U+0001, DEL, U+2028, U+2029, <, > and &, a real U+FFFD, a quote,
+    # a backslash and a slash, and non-ASCII.
+    name = ('a<b>&c' + chr(8) + chr(12) + chr(10) + chr(13) + chr(9) + chr(1) + chr(127) + chr(0x2028) + chr(0x2029) +
+            chr(0xe9) + chr(0xfffd) + '"' + chr(92) + '/')
+    escapes = dict(source=name, started_at='2026-05-06T07:08:09Z', whole=True, verdict=1, cause=0,
+                   scopes=[dict(id=name, status=1, reason=name, activity_available=True)],
+                   counts=(1, 0, 1, 0, 1, 0),
+                   observed=[dict(identity=K('s', 1, name), entitlement=K('s', 3, 'e'), fidelity=1)])
     for name, run in (
+        ('escapes', escapes),
         ('grants tie', dict(empty, observed=[a, b])),
         ('scopes tie', dict(empty, scopes=[dict(id='s', status=2, activity_available=False),
                                            dict(id='s', status=1, activity_available=True)])),

@@ -25,8 +25,13 @@ const (
 	ReasonUnreadable = "unreadable"
 	// ReasonFormat: the manifest is of a version this verifier does not know.
 	ReasonFormat = "format"
-	// ReasonLimit: the pack expands past the limits.
+	// ReasonLimit: the pack expands past the limits, or a line of a log is longer than
+	// the bound. What is past a bound is not read, and nothing is said of it.
 	ReasonLimit = "limit"
+	// ReasonUnknownMember: a document, or a line of a log, holds a member this
+	// verifier does not know, which may be one a later revision of the format added.
+	// It is not a disagreement: the verifier is older than the file.
+	ReasonUnknownMember = "unknown-member"
 
 	// Findings: the pack was checked and does not agree with itself.
 
@@ -223,7 +228,7 @@ func check(src source, lim Limits) (*Report, error) {
 	}
 	if len(problems) > 0 {
 		for _, p := range problems {
-			v.addf(ReasonManifest, "manifest.json", "%s", p)
+			v.addf(reasonOf(p, ReasonManifest), "manifest.json", "%s", p.msg)
 		}
 		return v.rep, nil
 	}
@@ -467,7 +472,7 @@ func (v *verifier) unlisted(listed map[string]manifestFile) {
 	}
 	sort.Strings(extra)
 	for _, p := range extra {
-		v.addf(ReasonUnlisted, p, "is in the pack and the manifest does not list it")
+		v.addf(ReasonUnlisted, p, "is in the pack and the manifest does not list it%s", systemNote(p))
 	}
 }
 
@@ -554,6 +559,15 @@ func short(s string) string {
 		s = s[:12]
 	}
 	return quote(s)
+}
+
+// reasonOf is the reason of a problem: that of the document it is in, unless it is
+// a member this verifier does not know.
+func reasonOf(p issue, document string) string {
+	if p.unknown {
+		return ReasonUnknownMember
+	}
+	return document
 }
 
 // workflowRun gathers, as the workflow log is read, the events the pack is
@@ -721,7 +735,7 @@ func (v *verifier) campaign(m *manifest, need needs, raw map[string][]byte) {
 	}
 	c, problems := parseCampaign(body)
 	for _, p := range problems {
-		v.addf(ReasonCampaign, campaignPath, "%s", p)
+		v.addf(reasonOf(p, ReasonCampaign), campaignPath, "%s", p.msg)
 	}
 	if len(problems) > 0 || c == nil {
 		return

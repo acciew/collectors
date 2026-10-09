@@ -1,0 +1,12 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "delete": [
+    "document.json"
+  ],
+  "verified": false,
+  "findings": [
+    "missing document.json"
+  ],
+  "note": "A listed file removed."
+}

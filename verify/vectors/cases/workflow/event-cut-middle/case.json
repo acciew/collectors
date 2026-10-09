@@ -1,0 +1,13 @@
+{
+  "kind": "workflow",
+  "base": "workflow/good",
+  "verified": false,
+  "reason": "sequence",
+  "chains": [
+    "f14d723a934dc1ca7cb4924961dba37d91c82e7cacd5148ca157556414e302fa",
+    "5186f8546c8ae4bbff7c4fbbef68e51dcd8d9a376b8615b80468d9edca66ec19",
+    "62872803f05bb8e8c98d74ff75f068419b05d7d32d158a2d31596eb1ce30affd",
+    "333a942b6f9c6c55ac50132e16b99ea4bab1a042dc0cd17d37e58f7939fb5e7b"
+  ],
+  "note": "The third event removed."
+}

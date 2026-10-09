@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "list manifest.sha256"
+  ],
+  "note": "A line added to manifest.sha256."
+}

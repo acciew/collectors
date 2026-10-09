@@ -1,0 +1,95 @@
+{
+  "campaign": {
+    "id": "c-1",
+    "items": 3,
+    "lock_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "locked_at": "2026-10-06T09:00:00Z",
+    "name": "Q4 access review"
+  },
+  "collections": [
+    {
+      "chain_value": "f809155c2b9d4971c05ab0cf4cbde5f06112e014340b21882c476f5308676373",
+      "connection": "conn-1",
+      "digest": "a319fd1c8fda3eb8f631a2f26aa131801e3ee875a16848b2dabf6e0ed658fd25",
+      "head_chain_value": "253b941f286f85c0a76ef200de1441ccd50bc767adba17be29ddd9fe2eeeec6f",
+      "head_seq": 3,
+      "plugin": "alpha",
+      "seq": 2,
+      "snapshot": "snapshots/conn-1/snapshot-alpha-2.json"
+    }
+  ],
+  "completeness": {
+    "all_decided": false,
+    "decided": 2,
+    "undecided": 1
+  },
+  "document": {
+    "format": 1,
+    "pdf": {
+      "made": false,
+      "reason": "not asked for"
+    }
+  },
+  "files": [
+    {
+      "bytes": 24,
+      "path": "README.txt",
+      "sha256": "5805a458b86b64e60f4b2a4c12f5782d9afd4eb487fb1e607d81fc2dbc73a891"
+    },
+    {
+      "bytes": 646,
+      "path": "campaign.json",
+      "sha256": "3fc000df748ad991c1097f213486fb0f27ca46f05989de0b1631f8dd8c5cfe28"
+    },
+    {
+      "bytes": 13,
+      "path": "document.json",
+      "sha256": "2f0fd78a91263ee7352df687964d366f9e7323d54cb0412cb1c1d73afeb5bcf1"
+    },
+    {
+      "bytes": 100,
+      "path": "history/conn-1/alpha.head",
+      "sha256": "665350dc7612c3946507bea8d7d87908e96ebf761d67b786232e5d850bd8a2e1"
+    },
+    {
+      "bytes": 2803,
+      "path": "history/conn-1/alpha.jsonl",
+      "sha256": "98d1e6cd82a3c11702cdd389b89c57df9e90ee891d99de4f823e4a8972b3faee"
+    },
+    {
+      "bytes": 31,
+      "path": "register.xlsx",
+      "sha256": "6a0d22886dd6d5ab14d1d38d82566dc4fc4fdd0cc1df4b1a6c3fe258998a9f72"
+    },
+    {
+      "bytes": 31,
+      "path": "report.docx",
+      "sha256": "738d36e7554624666d6b0ab2b6713f7ba0148e3bcc16d456b251a8456688cd56"
+    },
+    {
+      "bytes": 29,
+      "path": "snapshots/conn-1/snapshot-alpha-2.json",
+      "sha256": "6d7dac3dc2f5e6e0369fd1a5fea32f94e78a36ece3dcf63411d8bde45daec991"
+    },
+    {
+      "bytes": 100,
+      "path": "workflow/workflow.head",
+      "sha256": "049910f645811ad192fcd2586b9c6213600506f3da98f50bbd449a843e8dc630"
+    },
+    {
+      "bytes": 3767,
+      "path": "workflow/workflow.jsonl",
+      "sha256": "888f7454fee3df07f199c5ef75beed53bc21118a185c61db7c6df963d74caa70"
+    }
+  ],
+  "finalization": {
+    "finalized": false
+  },
+  "generated_at": "2026-10-20T15:30:00Z",
+  "heads": {
+    "workflow": {
+      "chain_value": "88dca9b174a94c6f4652bd9e9e458cda311e15bd50f33f69aec8c6813e66ce45",
+      "seq": 7
+    }
+  }
+}

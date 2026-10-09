@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "tail-cut workflow/workflow.jsonl"
+  ],
+  "note": "The last event removed from the workflow log and its anchor left as it was."
+}

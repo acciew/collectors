@@ -255,7 +255,6 @@ func TestALineMustBeExactlyTheFormItIsWrittenIn(t *testing.T) {
 	cases := map[string]string{
 		"a second body before the real one": at2(`{"sequence":2,`, `{"body":{"type":"forged","actor":"system"},"sequence":2,`),
 		"a member in other case":            at2(`"body":`, `"Body":`),
-		"a member nobody asked for":         at2(`"chain":`, `"note":"approved by the CEO","chain":`),
 		"windows line endings":              strings.ReplaceAll(log, "\n", "\r\n"),
 		"spaces between members":            at2(`"recorded_at":"2026-10-06T12:00:01.123456Z",`, `"recorded_at": "2026-10-06T12:00:01.123456Z",`),
 		"the same time in another zone":     at2("12:00:01.123456Z", "14:00:01.123456+02:00"),
@@ -341,7 +340,6 @@ func TestABodyThatIsNotAnEventDoesNotVerify(t *testing.T) {
 		"an empty actor":                 `{"type":"x","actor":""}`,
 		"a type that is not a string":    `{"type":1,"actor":"system"}`,
 		"an actor that is null":          `{"type":"x","actor":null}`,
-		"a member nobody asked for":      `{"type":"x","actor":"system","note":"y"}`,
 		"a member in other case":         `{"Type":"x","actor":"system"}`,
 		"a repeated member":              `{"type":"a","type":"b","actor":"system"}`,
 		"a repeated member, spelled out": `{"type":"a","t` + "\\" + `u0079pe":"b","actor":"system"}`,
@@ -487,7 +485,7 @@ func TestALongLineIsReadWholeHoweverItArrives(t *testing.T) {
 		}
 	}
 	_, err := workflow.VerifyReaders("x", strings.NewReader(log), strings.NewReader(head), workflow.Limits{MaxLineBytes: 1000})
-	check(t, err, want{reason: "line", line: 2})
+	check(t, err, want{reason: "limit", line: 2})
 }
 
 // The standard library stops at ten thousand levels of nesting, so a body that
@@ -588,10 +586,10 @@ func TestALineOfExactlyTheLimitIsTakenAndOneByteMoreIsNot(t *testing.T) {
 		t.Errorf("a line of exactly %d bytes with a limit of %d: %v", n, n, err)
 	}
 	_, err := workflow.VerifyReaders("x", strings.NewReader(log), strings.NewReader(head), workflow.Limits{MaxLineBytes: n - 1})
-	check(t, err, want{reason: "line", line: 1})
+	check(t, err, want{reason: "limit", line: 1})
 	// And a final line with no line feed, past the limit, is refused for its length.
 	_, err = workflow.VerifyReaders("x", strings.NewReader(strings.TrimSuffix(log, "\n")), strings.NewReader(head), workflow.Limits{MaxLineBytes: n - 1})
-	check(t, err, want{reason: "line", line: 1})
+	check(t, err, want{reason: "limit", line: 1})
 	if err == nil || !strings.Contains(err.Error(), "longer than") {
 		t.Errorf("error = %v: it does not say the line is too long", err)
 	}
@@ -606,5 +604,25 @@ func TestTheCallbackNeverSeesAnEntryOfALogWithNoAnchor(t *testing.T) {
 	check(t, err, want{reason: "anchor-missing"})
 	if seen != 0 {
 		t.Errorf("the callback saw %d entries of a log with no anchor", seen)
+	}
+}
+
+// A member this verifier does not know may be an optional one a later revision
+// added, so nothing is said to disagree: the verifier is older than the file.
+func TestAMemberThisVerifierDoesNotKnowIsSaidToBeThat(t *testing.T) {
+	log, head := good(t)
+	ls := lines(log)
+	inLine := ls[0] + replaceOnce(t, ls[1], `"chain":`, `"note":"approved","chain":`) + strings.Join(ls[2:], "")
+	_, err := verify(t, inLine, head)
+	check(t, err, want{reason: "unknown-member", line: 2})
+	if err == nil || !strings.Contains(err.Error(), `holds a member "note" that this verifier does not know`) || !strings.Contains(err.Error(), "newer") {
+		t.Errorf("error = %v", err)
+	}
+
+	inBody, inBodyHead := build(t, created, `{"type":"x","actor":"system","note":"y"}`)
+	_, err = verify(t, inBody, inBodyHead)
+	check(t, err, want{reason: "unknown-member", line: 2})
+	if err == nil || !strings.Contains(err.Error(), `holds a member "note" that this verifier does not know`) || strings.Contains(err.Error(), "json:") {
+		t.Errorf("error = %v", err)
 	}
 }

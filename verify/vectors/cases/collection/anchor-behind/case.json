@@ -1,0 +1,17 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "anchor-stale",
+  "digests": [
+    "f296b2e6af7c14b0335950c51077dc627f073aa8172fd2ffb0a979b07185bf20",
+    "a319fd1c8fda3eb8f631a2f26aa131801e3ee875a16848b2dabf6e0ed658fd25",
+    "e9595a0f9ad8f0493be666548e008f5d13e004a1873d47484ca5768a3adabb06"
+  ],
+  "chains": [
+    "6b0f653e62fe00ee67511a11a52f6465c7affdae4775093f30867199b58ee0c4",
+    "f809155c2b9d4971c05ab0cf4cbde5f06112e014340b21882c476f5308676373",
+    "253b941f286f85c0a76ef200de1441ccd50bc767adba17be29ddd9fe2eeeec6f"
+  ],
+  "note": "An anchor that names the second entry of a log of three."
+}

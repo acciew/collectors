@@ -1,0 +1,12 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "delete": [
+    "manifest.sha256"
+  ],
+  "verified": false,
+  "findings": [
+    "missing manifest.sha256"
+  ],
+  "note": "manifest.sha256 removed."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "campaign campaign.json"
+  ],
+  "note": "campaign.json names another campaign than the manifest."
+}

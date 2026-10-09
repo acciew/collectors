@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "list manifest.sha256"
+  ],
+  "note": "The manifest edited, and manifest.sha256 left as it was."
+}

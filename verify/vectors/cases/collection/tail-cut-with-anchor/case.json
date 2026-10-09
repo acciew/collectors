@@ -1,0 +1,14 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": true,
+  "digests": [
+    "f296b2e6af7c14b0335950c51077dc627f073aa8172fd2ffb0a979b07185bf20",
+    "a319fd1c8fda3eb8f631a2f26aa131801e3ee875a16848b2dabf6e0ed658fd25"
+  ],
+  "chains": [
+    "6b0f653e62fe00ee67511a11a52f6465c7affdae4775093f30867199b58ee0c4",
+    "f809155c2b9d4971c05ab0cf4cbde5f06112e014340b21882c476f5308676373"
+  ],
+  "note": "The last entry removed and the anchor made to name the second. Nothing a single party holds can show this."
+}

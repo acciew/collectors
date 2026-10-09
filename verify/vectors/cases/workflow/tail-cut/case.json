@@ -1,0 +1,19 @@
+{
+  "kind": "workflow",
+  "base": "workflow/good",
+  "verified": false,
+  "reason": "tail-cut",
+  "digests": [
+    "eced2aa288415d40918b78ed356717eeb5578991756990d32889b724232ea053",
+    "3d4352b338588fc79707251daa2ee999b8072a8d19ed8f171d0fbaacda026c3e",
+    "2b42dbbbf295c82eb7d4f8e6101a19167ffac5f23ce8678280c6d5b55235bfa3",
+    "d32f00bf41f72e204e39de101342f3117e38e5f749e215c8ae6126a0d5ff2137"
+  ],
+  "chains": [
+    "f14d723a934dc1ca7cb4924961dba37d91c82e7cacd5148ca157556414e302fa",
+    "5186f8546c8ae4bbff7c4fbbef68e51dcd8d9a376b8615b80468d9edca66ec19",
+    "1112f3d1f72e444dac4f7e440f7de59c5002e58ac8b5b5321d3b918b2873d068",
+    "62872803f05bb8e8c98d74ff75f068419b05d7d32d158a2d31596eb1ce30affd"
+  ],
+  "note": "The last event removed and the anchor left as it was."
+}

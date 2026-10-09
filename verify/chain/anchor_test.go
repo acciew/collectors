@@ -127,8 +127,6 @@ func TestAnAnchorInAFormatThisVerifierDoesNotKnowIsNotCalledAltered(t *testing.T
 func TestAnAnchorThatIsNotInTheFormItIsWrittenInIsRefused(t *testing.T) {
 	good := `{"format":1,"sequence":3,"chain":"` + c3 + `"}`
 	cases := map[string]string{
-		"an unknown field":        `{"format":1,"sequence":3,"chain":"` + c3 + `","note":"x"}`,
-		"an unknown field first":  `{"note":"x","format":1,"sequence":3,"chain":"` + c3 + `"}`,
 		"a repeated field":        `{"format":1,"sequence":2,"sequence":3,"chain":"` + c3 + `"}`,
 		"a repeated format":       `{"format":2,"format":1,"sequence":3,"chain":"` + c3 + `"}`,
 		"a field in another case": `{"format":1,"Sequence":3,"chain":"` + c3 + `"}`,
@@ -163,13 +161,21 @@ func TestAnAnchorThatIsNotInTheFormItIsWrittenInIsRefused(t *testing.T) {
 	}
 }
 
-func TestAnUnknownFieldIsNamed(t *testing.T) {
-	_, err := chain.ReadAnchor(strings.NewReader(`{"format":1,"sequence":3,"chain":"` + c3 + `","extra":1}`))
-	if err == nil || !strings.Contains(err.Error(), `unknown field "extra"`) {
-		t.Errorf("error = %v, want one naming the unknown field", err)
-	}
-	if reason(t, err) != chain.ReasonUnreadable {
-		t.Errorf("reason = %s", reason(t, err))
+// A member this verifier does not know may be an optional one a later revision
+// added, so nothing is said to disagree: the verifier is older than the file.
+func TestAMemberThisVerifierDoesNotKnowIsSaidToBeThat(t *testing.T) {
+	for _, in := range []string{
+		`{"format":1,"sequence":3,"chain":"` + c3 + `","extra":1}`,
+		`{"extra":1,"format":1,"sequence":3,"chain":"` + c3 + `"}`,
+	} {
+		_, err := chain.ReadAnchor(strings.NewReader(in))
+		if err == nil || reason(t, err) != chain.ReasonUnknownMember {
+			t.Fatalf("%s: error = %v", in, err)
+		}
+		if !strings.Contains(err.Error(), `holds a member "extra" that this verifier does not know`) || !strings.Contains(err.Error(), "newer") ||
+			strings.Contains(err.Error(), "json:") {
+			t.Errorf("error = %q", err)
+		}
 	}
 }
 

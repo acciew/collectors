@@ -1,0 +1,17 @@
+pack DIR
+
+  manifest.json                  SHA-256 cd02eb568076ec2a880e5302463f154e77f195bb856da9886bd61200c7466e25
+  listed files                   10 files match the manifest
+  history/conn-1/alpha.jsonl     3 collections, consistent with its own chain
+  workflow/workflow.jsonl        7 events, consistent with its own chain
+  bounds in force                10000 files and folders; 2 GiB a file; 8 GiB in all; 500 times its size for an archive entry past 1 MiB
+                                 64 MiB a line of a log; 64 MiB each for manifest.json, manifest.sha256 and campaign.json
+! history/conn-1/alpha.jsonl: entry 2 of this log has the digest "a319fd1c8fda" and the chain value "f809155c2b9d", and the manifest names "000000000000" and "f809155c2b9d" for collection 1
+! campaign.json: does not name the collections the manifest names: "conn-1", entry 2, is not among them; and it names 1 the manifest does not
+! workflow/workflow.jsonl: entry 5: the campaign.locked event does not name the collections the manifest names: "conn-1", entry 2, is not among them; and it names 1 the manifest does not
+! workflow/workflow.jsonl: holds no collection.completed event for "conn-1", entry 2 with the digest and chain value the manifest names, before the lock at entry 5
+
+4 findings. The pack does not verify.
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

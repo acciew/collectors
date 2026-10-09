@@ -1,0 +1,7 @@
+{
+  "kind": "workflow",
+  "base": "workflow/good",
+  "verified": false,
+  "reason": "unknown-member",
+  "note": "A member of a line that the format does not have. It may be one a later revision added, so the verifier says it is older than the file and not that anything disagrees."
+}

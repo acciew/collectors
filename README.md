@@ -61,6 +61,15 @@ and what has not been verified.
   Its README says what it sends, and [`docs/agent-protocol.md`](docs/agent-protocol.md)
   is the protocol.
 
+## Checking an evidence pack
+
+[`verify/`](verify) is the checker for the evidence Acciew exports: `acciew-verify pack <folder|archive.zip>`
+checks a pack against its manifest, each log against its anchor, and the manifest, `campaign.json` and the
+workflow log against one another. It is one module, standard library only, that imports nothing else
+here. [`verify/README.md`](verify/README.md) says what a pass shows and what it does not,
+[`docs/evidence-format.md`](docs/evidence-format.md) is the format it checks, and
+[the decision record](docs/adr/0015-evidence-verifier.md) says why it is built this way.
+
 ## Layout
 
 ```
@@ -70,11 +79,12 @@ sdk/conformance/      the suite an author runs against their collector
 sdk/examples/minimal/ the reference collector
 plugins/              first-party collectors: keycloak, github, awsiam, entra
 cmd/acciew-agent/     the agent: runs collectors in a customer's network, uploads over HTTPS
+verify/               the evidence verifier: reads exported logs and packs and checks them against themselves
 docs/                 decision records, the source mapping, the authoring notes
 tools/                pinned developer tooling
 ```
 
-`api`, `sdk/go`, `sdk/conformance`, `sdk/examples/minimal`, `cmd/acciew-agent` and
+`api`, `sdk/go`, `sdk/conformance`, `sdk/examples/minimal`, `cmd/acciew-agent`, `verify` and
 each directory under `plugins/` is its own Go module, and all of them are tagged together from
 one commit. `plugins/keycloak/integration` is also a module, but it is only
 tests: never installed, never tagged. The repository root and `tools/` have

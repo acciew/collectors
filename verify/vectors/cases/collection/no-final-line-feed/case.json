@@ -1,0 +1,7 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "line",
+  "note": "The last line cut short of its line feed."
+}

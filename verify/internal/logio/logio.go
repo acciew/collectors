@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"go.acciew.io/collector/verify/chain"
+	"go.acciew.io/collector/verify/internal/jsonobj"
 	"go.acciew.io/collector/verify/internal/text"
 )
 
@@ -62,6 +63,11 @@ const (
 	ReasonDigest Reason = "digest"
 	// ReasonEvent: an entry's body is not an event.
 	ReasonEvent Reason = "event"
+	// ReasonLimit: a line is longer than the bound. It says nothing about the log.
+	ReasonLimit Reason = "limit"
+	// ReasonUnknownMember: a line holds a member this verifier does not know. It
+	// says nothing about the log: the file may be newer than the verifier.
+	ReasonUnknownMember Reason = "unknown-member"
 )
 
 // Error is a fault in a log that is not about the chain. Its text says what
@@ -103,6 +109,17 @@ func LineFault(line int, format string, args ...any) *Error {
 	return &Error{Reason: ReasonLine, Line: line, msg: fmt.Sprintf("line %d ", line) + fmt.Sprintf(format, args...)}
 }
 
+// LineError makes the fault of a line that could not be read as an entry: a member
+// the verifier does not know is said to be that, in words that are not the
+// decoder's, and anything else is a line that is not in the form.
+func LineError(line int, err error) *Error {
+	if name, ok := jsonobj.UnknownMember(err); ok {
+		return Faultf(ReasonUnknownMember, line, 0, "line %d holds a member %s that this verifier does not know: the file may be newer than this verifier",
+			line, text.Quote(name))
+	}
+	return LineFault(line, "%v", err)
+}
+
 // Unreadable makes a fault in reading, which carries the error that caused it.
 func Unreadable(err error, format string, args ...any) *Error {
 	return &Error{Reason: ReasonUnreadable, msg: fmt.Sprintf(format, args...), err: err}
@@ -123,7 +140,7 @@ func ReadLines(r io.Reader, limits Limits, visit func(line int, raw []byte) erro
 		case errors.Is(err, io.EOF):
 			return nil
 		case errors.Is(err, errTooLong):
-			return LineFault(n, "is longer than %d bytes, which this reader will not take in", limit)
+			return Faultf(ReasonLimit, n, 0, "line %d is longer than %d bytes, which this reader will not take in", n, limit)
 		case errors.Is(err, errNoNewline):
 			return LineFault(n, "does not end in a line feed: the log was cut short, or was written by something else")
 		case err != nil:

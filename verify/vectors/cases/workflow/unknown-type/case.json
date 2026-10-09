@@ -1,0 +1,8 @@
+{
+  "kind": "workflow",
+  "verified": true,
+  "digests": [
+    "9a126b75b69413f0b759804a235aafdb10560de150acf94ce1730a1587a03d23"
+  ],
+  "note": "A type this verifier has never heard of is chained like any other."
+}

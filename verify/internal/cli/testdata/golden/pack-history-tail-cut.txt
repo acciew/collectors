@@ -1,0 +1,13 @@
+pack DIR
+
+  manifest.json                  SHA-256 8d89d38861139ef78b8310c0f3d0accd34cd8d698dbb22891eed912f210c92d9
+  listed files                   10 files match the manifest
+  workflow/workflow.jsonl        7 events, consistent with its own chain
+  bounds in force                10000 files and folders; 2 GiB a file; 8 GiB in all; 500 times its size for an archive entry past 1 MiB
+                                 64 MiB a line of a log; 64 MiB each for manifest.json, manifest.sha256 and campaign.json
+! history/conn-1/alpha.jsonl: chain: the log ends at entry 2 and the anchor names entry 3: entries were removed from the end, or the anchor belongs to a longer log
+
+1 finding. The pack does not verify.
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"go.acciew.io/collector/verify/internal/jsonobj"
 	"go.acciew.io/collector/verify/internal/text"
 )
 
@@ -55,6 +56,10 @@ func ReadAnchor(r io.Reader) (Anchor, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&a); err != nil {
+		if name, ok := jsonobj.UnknownMember(err); ok {
+			return Anchor{}, fault(ReasonUnknownMember, 0, "the anchor holds a member %s that this verifier does not know: the file may be newer than this verifier",
+				text.Quote(name))
+		}
 		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor is not in a form this verifier reads: %v", err)
 	}
 	if again, err := json.Marshal(a); err != nil || !bytes.Equal(again, body) {

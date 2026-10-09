@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "head history/conn-1/alpha.jsonl"
+  ],
+  "note": "The manifest says the collection log has more entries than it has."
+}

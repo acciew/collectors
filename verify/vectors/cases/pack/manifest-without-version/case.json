@@ -1,0 +1,7 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "error": "format",
+  "note": "A manifest that does not say which version it is."
+}

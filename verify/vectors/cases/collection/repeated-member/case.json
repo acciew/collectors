@@ -1,0 +1,7 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "line",
+  "note": "A member written twice, which one reader takes by the first and another by the last."
+}

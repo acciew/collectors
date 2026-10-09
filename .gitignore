@@ -9,6 +9,11 @@
 # whose entry is missing here fails the build rather than shipping 18 MB.
 /sdk/examples/minimal/minimal
 /cmd/acciew-agent/acciew-agent
+/verify/cmd/acciew-verify/acciew-verify
+
+# Test vectors being reviewed: written by `go test ./vectors -update`, never committed.
+/verify/vectors/candidates/
+/verify/internal/cli/testdata/golden.candidates/
 
 # Test + coverage artefacts
 /.cover/
@@ -28,3 +33,7 @@
 # Local environment overrides (never commit credentials)
 .env
 .env.local
+
+# Python bytecode from the fixture generators
+__pycache__/
+*.pyc

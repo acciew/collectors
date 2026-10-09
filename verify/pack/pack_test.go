@@ -136,7 +136,7 @@ func TestAChangeToAChainIsNamedOnceTheManifestAgreesWithTheFiles(t *testing.T) {
 		}, []string{"format " + hist}},
 		{"a field no one asked for in a line of a collection log", func(p *tpack) {
 			p.edit(hist, func(s string) string { return strings.Replace(s, `{"sequence":1,`, `{"note":"x","sequence":1,`, 1) }).relist()
-		}, []string{"line " + hist}},
+		}, []string{"unknown-member " + hist}},
 		{"an entry cut out of the middle of the workflow log", func(p *tpack) {
 			p.files[wf] = []byte(dropLine(string(p.files[wf]), 2))
 			p.relist()
@@ -155,7 +155,7 @@ func TestAChangeToAChainIsNamedOnceTheManifestAgreesWithTheFiles(t *testing.T) {
 		}, []string{"digest " + wf}},
 		{"a field no one asked for in a line of the workflow log", func(p *tpack) {
 			p.edit(wf, func(s string) string { return strings.Replace(s, `"chain":`, `"note":"x","chain":`, 1) }).relist()
-		}, []string{"line " + wf}},
+		}, []string{"unknown-member " + wf}},
 		{"the anchor of the workflow log in format 2", func(p *tpack) {
 			p.files[wfHead] = []byte(`{"format":2,"sequence":6,"chain":"` + p.wentries[5].Chain + `"}`)
 			p.relist()
@@ -327,7 +327,7 @@ func TestAManifestInAShapeThisVerifierDoesNotKnowIsNamed(t *testing.T) {
 			}
 			var manifestFindings int
 			for _, f := range rep.Findings {
-				if f.Reason == "manifest" && f.Path == "manifest.json" {
+				if (f.Reason == "manifest" || f.Reason == "unknown-member") && f.Path == "manifest.json" {
 					manifestFindings++
 				}
 			}

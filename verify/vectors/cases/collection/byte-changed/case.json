@@ -1,0 +1,12 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "digest",
+  "chains": [
+    "6b0f653e62fe00ee67511a11a52f6465c7affdae4775093f30867199b58ee0c4",
+    "f809155c2b9d4971c05ab0cf4cbde5f06112e014340b21882c476f5308676373",
+    "253b941f286f85c0a76ef200de1441ccd50bc767adba17be29ddd9fe2eeeec6f"
+  ],
+  "note": "A count in the second record changed. Its digest no longer matches."
+}

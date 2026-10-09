@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "head history/conn-1/alpha.jsonl"
+  ],
+  "note": "The last entry removed and the anchor moved with it. The log agrees with itself; the manifest says where it ended."
+}

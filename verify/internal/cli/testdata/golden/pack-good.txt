@@ -1,0 +1,24 @@
+pack DIR
+
+  manifest.json                  SHA-256 e339b1247a1a94c595e140b4e889d1d959616a3949aebd5ea21b3398a763fd30
+  listed files                   10 files match the manifest
+  history/conn-1/alpha.jsonl     3 collections, consistent with its own chain
+  workflow/workflow.jsonl        7 events, consistent with its own chain
+  one against another            the manifest, campaign.json and the workflow log agree; each log ends where the manifest says
+  bounds in force                10000 files and folders; 2 GiB a file; 8 GiB in all; 500 times its size for an archive entry past 1 MiB
+                                 64 MiB a line of a log; 64 MiB each for manifest.json, manifest.sha256 and campaign.json
+
+What a pass shows: the files are the ones this manifest names; each collection log and the
+workflow log is hash-chained and checkable against itself and its anchor; and the manifest,
+campaign.json and the workflow log name the same collections and the same lock, and each log ends
+where the manifest says it does.
+
+What it does not show: that Acciew made the pack. Nothing inside a pack ties its manifest to
+anything outside it, so files, logs, anchors and manifest rewritten together pass. To know that
+this is the manifest Acciew made, compare the manifest digest this check prints with the
+pack.built record Acciew keeps for it, obtained from Acciew directly and not from whoever handed
+over the pack; that record is itself on a log Acciew holds, so it shows what Acciew says it handed
+out, and nothing more. Nothing is signed. It does not show that a collection was complete or true,
+when anything was made, or who is behind an actor id or a typed name; that a stored collection in
+snapshots/ is the one its log entry records, since it is tied to the manifest's digest of the file
+and no further; or that the register, the report or the document say what document.json says.

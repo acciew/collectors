@@ -1,0 +1,1 @@
+{"sequence":1,"recorded_at":"2026-10-06T11:00:00Z","digest":"9a126b75b69413f0b759804a235aafdb10560de150acf94ce1730a1587a03d23","previous":"","chain":"53b3b323e35b6e45ae67d57a611fc956e3173edd2f84fc5e6e2ed14298721abf","body":{"type":"something.new","actor":"robot:1","data":{"anything":[1,2,{"x":null}]}}}

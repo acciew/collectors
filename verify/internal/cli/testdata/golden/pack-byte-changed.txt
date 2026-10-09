@@ -1,0 +1,14 @@
+pack DIR
+
+  manifest.json                  SHA-256 e339b1247a1a94c595e140b4e889d1d959616a3949aebd5ea21b3398a763fd30
+  listed files                   9 files match the manifest
+  history/conn-1/alpha.jsonl     3 collections, consistent with its own chain
+  workflow/workflow.jsonl        7 events, consistent with its own chain
+  bounds in force                10000 files and folders; 2 GiB a file; 8 GiB in all; 500 times its size for an archive entry past 1 MiB
+                                 64 MiB a line of a log; 64 MiB each for manifest.json, manifest.sha256 and campaign.json
+! register.xlsx: is not the file the manifest lists: its SHA-256 is 2ee5d406971d206a5f80dd5321fe55e86e187abdcfcda3c9057a94352268499e and the manifest says 6a0d22886dd6d5ab14d1d38d82566dc4fc4fdd0cc1df4b1a6c3fe258998a9f72
+
+1 finding. The pack does not verify.
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "format history/conn-1/alpha.jsonl"
+  ],
+  "note": "The anchor of the collection log in a format this verifier does not know."
+}

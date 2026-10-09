@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "sha256 register.xlsx"
+  ],
+  "note": "One byte of a listed file changed."
+}

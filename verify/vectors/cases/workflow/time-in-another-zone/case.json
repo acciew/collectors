@@ -1,0 +1,7 @@
+{
+  "kind": "workflow",
+  "base": "workflow/good",
+  "verified": false,
+  "reason": "line",
+  "note": "The first time written with an offset instead of Z."
+}

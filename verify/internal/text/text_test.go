@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,6 +44,30 @@ func TestPlainIsWhatAnErrorSaysWithoutThePathItCarries(t *testing.T) {
 	for name, tc := range cases {
 		if got := text.Plain(tc.err); got != tc.want {
 			t.Errorf("%s: Plain = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+func TestQuoteQuotesOnceWhateverTheNameIs(t *testing.T) {
+	for _, in := range []string{"plain", "", "a b"} {
+		if got := text.Quote(in); got != `"`+in+`"` {
+			t.Errorf("Quote(%q) = %s", in, got)
+		}
+	}
+	for _, in := range []string{"a\x1b[2Jb", "a\xe2\x80\xaeb", "a\xffb", "a\nb"} {
+		if got := text.Quote(in); got != strconv.Quote(in) {
+			t.Errorf("Quote(%q) = %s, want %s", in, got, strconv.Quote(in))
+		}
+	}
+}
+
+// A name with a quote or a backslash in it is quoted with them escaped, so that where
+// it ends is not in doubt.
+func TestQuoteEscapesWhatWouldMakeItAmbiguous(t *testing.T) {
+	for _, in := range []string{`a"b`, `a\b`, `"`, `a"b"c`} {
+		want := strconv.Quote(in)
+		if got := text.Quote(in); got != want {
+			t.Errorf("Quote(%q) = %s, want %s", in, got, want)
 		}
 	}
 }

@@ -1,0 +1,8 @@
+{
+  "kind": "collection",
+  "verified": true,
+  "digests": [
+    "615ac6461ef671e2f5f3da10420d6e7597190f9a3ae1aaf09a2526142e298aee"
+  ],
+  "note": "Two scopes with one id, in one order."
+}

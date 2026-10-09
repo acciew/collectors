@@ -214,11 +214,15 @@ and `via` (a list of keys, left out when empty), in that order.
 A **key** has the members `scope` (a string), `type` (an *int32*) and `id` (a string), in that
 order.
 
-A line that is not exactly this is refused: a member that is not listed, a repeated or missing
-one, a member in another order, in another case or spelled with an escape, a member written
-out that is to be left out, a `null` where a value is required, a value of another kind or
-outside its range, other spacing, or a time written any other way than as above. A verifier
-that read such a line leniently would read something other than what another reader reads.
+A line that is not exactly this is refused: a repeated or missing member, a member in another
+order, in another case or spelled with an escape, a member written out that is to be left out, a
+`null` where a value is required, a value of another kind or outside its range, other spacing, or a
+time written any other way than as above. A verifier that read such a line leniently would read
+something other than what another reader reads.
+
+A member that is not listed is refused too, but it is named for what it may be and not as a line
+that disagrees: `unknown-member`. It may be an optional member that a later revision of the format
+added, so the file may be newer than the verifier, and nothing is said to disagree.
 
 ### The digest
 
@@ -365,11 +369,12 @@ has the digest `b3b19a7a0bdb041196b600216458e41d097d59dc5ef8ac730589fd9c0d5c3510
 {"sequence":1,"recorded_at":"2026-10-06T12:00:00.123456Z","digest":"eced2aa288415d40918b78ed356717eeb5578991756990d32889b724232ea053","previous":"","chain":"f14d723a934dc1ca7cb4924961dba37d91c82e7cacd5148ca157556414e302fa","body":{"type":"example.created","actor":"system","data":{"name":"Acme \u003c\u0026\u003e Co"}}}
 ```
 
-A line that is not exactly this is refused as a line: a member that is not listed, a repeated or
-missing one, a member in another order, case or spelling, a `null` where a value is required,
+A line that is not exactly this is refused as a line: a repeated or missing member, a member in
+another order, case or spelling, a `null` where a value is required,
 other spacing in the line or the body, a time not in UTC or written another way, or a body with
 `<`, `>`, `&`, U+2028 or U+2029 in a string that is not written as an escape. A line past the
-verifier's bound is refused and not skipped, as in a collection log. JSON nested deeper than ten
+verifier's bound is refused and not skipped, as in a collection log (`limit`). A member of a line
+that is not listed is `unknown-member`, as there. JSON nested deeper than ten
 thousand levels is refused, which is the limit of the reference verifier's JSON reader.
 
 ### The event
@@ -381,9 +386,9 @@ covers the bytes. `type` says what happened, as in `collection.completed`, and `
 `system`, or a kind and an identifier such as `admin:<id>`. `data` is the rest.
 
 A body that is not an object, has no `type` or no `actor`, has either empty or not a string,
-has `data` that is not an object, or has another member than these three is refused as
-`event`, and so is one that repeats a member, at the top level or in `data`, or spells a member
-name in another case. A member name is compared as the text it stands for, so `"t\u0079pe"` is
+or has `data` that is not an object is refused as `event`; one that is an event and has another
+member than these three is `unknown-member`, as a line is. A body that repeats a member, at the
+top level or in `data`, or spells a member name in another case, is `event` too. A member name is compared as the text it stands for, so `"t\u0079pe"` is
 `type`.
 
 A verifier does not interpret `data`, or the type, beyond that: a type it has never heard of is
@@ -425,14 +430,16 @@ with `/`.
 
 A pass shows that the files in the pack are the ones this manifest names, that each log agrees
 with itself and with its anchor, and that the manifest, `campaign.json` and the workflow log name
-the same collection entries and the same ends of the logs.
+the same collection entries and the same lock, and each log ends where the manifest says it does.
 
 It does not show that the manifest is the one the service made. Nothing inside a pack ties
 `manifest.json` to anything outside it: a pack whose files, logs, anchors, manifest and
 `manifest.sha256` were all rewritten together passes. The check reports the digest of
-`manifest.json` so that it can be compared with the record the service keeps of each manifest it
-hands out (the `pack.built` event on its own trail); keeping the ends of the logs somewhere else is
-the further answer to a whole chain being rewritten, and is not done here. It does not tie a stored
+`manifest.json`. To know that this is the manifest the service made, compare it with the
+`pack.built` record the service keeps for it, obtained from the service directly and not from whoever
+handed over the pack; that record is itself on a log the service holds, so it shows what the service
+says it handed out, and nothing more. Keeping the ends of the logs somewhere else is the further
+answer to a whole chain being rewritten, and is not done here. It does not tie a stored
 collection in `snapshots/` to the log entry it was locked from beyond the digest the manifest lists
 for the file: deriving a collection's digest from the stored file needs the format of that file
 specified, and is for a later format. It does not show who made the pack or when, or that what the
@@ -496,9 +503,10 @@ The members of the manifest are these, and no others:
 | `heads`        | yes   | An object with exactly `workflow`, an object with exactly `seq` and `chain_value`: where the workflow log ends. |
 | `generated_at`, `completeness`, `finalization`, `document`, `attestations` | no | Facts about the review and the document. They are allowed and not read, and a pass says nothing about them. |
 
-A member that is not in the table, in the objects whose members are given as exact, is refused as
-`manifest`, so that a manifest from a later revision of the format is not read as though it were this
-one. A list of files that names a path twice, names `manifest.json` or `manifest.sha256`, or names a
+A member that is not in the table, in the objects whose members are given as exact, is
+`unknown-member`, so that a manifest from a later revision of the format is not read as though it
+were this one, and is not said to disagree with the pack either. The same holds for `campaign.json`'s
+`sources`. A list of files that names a path twice, names `manifest.json` or `manifest.sha256`, or names a
 path that is not a plain name is refused as `manifest` too.
 
 ### manifest.sha256
@@ -579,7 +587,8 @@ exported.
 
 The service also records, on its own trail, a `pack.built` event with the digest of each manifest it
 hands out. It is after the pack's log ends, so it is not in the pack, and a check cannot see it. The
-digest of `manifest.json` is in the report so that it can be compared with the service's record.
+digest of `manifest.json` is in the report so that it can be compared with that record, obtained from
+the service and not from whoever handed over the pack.
 
 ## Reason codes
 
@@ -590,7 +599,8 @@ them, and the test vectors name them.
 |-------------------|---------------------------------------------------------------------------------|
 | `name`            | The name is not one a log can have; or, in a pack, an entry has a name no pack has. |
 | `unreadable`      | A file is missing, is not a plain file or cannot be read; or an anchor is not in the form anchors are written in; or a pack, or its manifest, cannot be read as one. |
-| `limit`           | A pack goes past a bound on what it may expand to. The pack was not checked.    |
+| `limit`           | A pack goes past a bound on what it may expand to, or a line of a log is longer than the bound. What is past a bound was not checked, and nothing is said of it. |
+| `unknown-member`  | A line, an anchor, an event, a manifest or a source holds a member this verifier does not know. It may be one a later revision of the format added: the file may be newer than the verifier, and nothing is said to disagree. |
 | `notplain`        | An entry of a pack is a link or another file that is not a plain file.          |
 | `duplicate`       | An archive holds a name more than once.                                         |
 | `manifest`        | The manifest is not in a form this verifier reads, or does not list what a cross-reference needs. |
@@ -627,5 +637,5 @@ and the new format is read alongside this one.
 A field may be added within format 1 only if it is optional and leaves every digest and chain
 value already written as it was. The section describing it is amended first, with an example.
 Readers refuse a field they do not know, rather than ignore it and compute a value that was
-never meant, so an older verifier says that it does not know a field and does not report an
-alteration.
+never meant, so an older verifier says that it does not know a field (`unknown-member`) and does
+not report an alteration.

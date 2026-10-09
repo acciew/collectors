@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "format workflow/workflow.jsonl"
+  ],
+  "note": "The anchor of the workflow log in a format this verifier does not know."
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -23,10 +24,6 @@ func TestACampaignFileThatCannotBeReadIsNamedWhenItIsTheFileTheManifestLists(t *
 		"no sources":              func(c map[string]any) []byte { delete(c, "sources"); return jsonFile(t, c) },
 		"sources that are a map":  func(c map[string]any) []byte { c["sources"] = map[string]any{}; return jsonFile(t, c) },
 		"a source that is a list": func(c map[string]any) []byte { c["sources"] = []any{[]any{}}; return jsonFile(t, c) },
-		"a source with a member it does not know": func(c map[string]any) []byte {
-			obj(list(c["sources"])[0])["owner"] = "x"
-			return jsonFile(t, c)
-		},
 		"a source with no name": func(c map[string]any) []byte {
 			delete(obj(list(c["sources"])[0]), "name")
 			return jsonFile(t, c)
@@ -158,7 +155,7 @@ func TestALineLimitReachesTheLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expect(t, rep, "line "+hist, "line "+wf)
+	expect(t, rep, "limit "+hist, "limit "+wf)
 }
 
 func TestErrors(t *testing.T) {
@@ -277,6 +274,25 @@ func TestWhatTheOperatingSystemLeavesInAFolderIsNotedAndInAnArchiveIsAFinding(t 
 	if len(zrep.Notes) != 0 {
 		t.Errorf("an archive has notes: %v", zrep.Notes)
 	}
+	// A finding that could read as an accusation says what it looks like.
+	const looksLike = "this looks like a file the operating system added when the archive was made again; check the archive as it was handed over"
+	for _, f := range zrep.Findings {
+		if !strings.Contains(f.Message, looksLike) {
+			t.Errorf("%s: message = %q", f.Path, f.Message)
+		}
+	}
+	// And what is not that does not say so.
+	files["notes.txt"] = []byte("added")
+	data = zipOf(t, files)
+	zrep, err = pack.VerifyZip(bytes.NewReader(data), int64(len(data)), pack.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zrep.Findings {
+		if f.Path == "notes.txt" && strings.Contains(f.Message, "operating system") {
+			t.Errorf("notes.txt: message = %q", f.Message)
+		}
+	}
 }
 
 // The digest is the same and only the time the entry was recorded differs, so the
@@ -298,4 +314,59 @@ func TestAnEntryReplacedByOneWithTheSameDigestAndAnotherChainValueIsCaught(t *te
 		t.Fatal(err)
 	}
 	expect(t, rep, "completed "+wf)
+}
+
+// A member this verifier does not know may be one a later revision of the format
+// added: the verifier is older than the pack, and nothing is said to disagree.
+func TestAMemberThisVerifierDoesNotKnowIsSaidToBeThatInTheManifestAndTheCampaignFile(t *testing.T) {
+	cases := map[string]struct {
+		change func(p *tpack)
+		want   string
+	}{
+		"in the manifest": {func(p *tpack) { p.manifest["supersedes"] = "p-1"; p.resign() }, "unknown-member manifest.json"},
+		"in a file entry": {func(p *tpack) { obj(filesOf(p.manifest)[0])["mode"] = "0644"; p.resign() }, "unknown-member manifest.json"},
+		"in a collection": {func(p *tpack) { firstCollection(p.manifest)["note"] = "x"; p.resign() }, "unknown-member manifest.json"},
+		"in the campaign": {func(p *tpack) { obj(p.manifest["campaign"])["owner"] = "x"; p.resign() }, "unknown-member manifest.json"},
+		"in the heads":    {func(p *tpack) { obj(p.manifest["heads"])["collections"] = 1; p.resign() }, "unknown-member manifest.json"},
+		"in a source of the file": {func(p *tpack) {
+			c := map[string]any{"id": campaignID, "lock_digest": lockDigest, "sources": []any{map[string]any{"connection": connID, "name": "n", "plugin": plugin,
+				"seq": p.locked().Sequence, "digest": p.locked().Digest, "chain_value": p.locked().Chain, "owner": "x"}}}
+			p.files["campaign.json"] = jsonFile(t, c)
+			p.relist()
+		}, "unknown-member campaign.json"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			p := newPack(t).build()
+			tc.change(p)
+			rep, err := verifyBoth(t, p.files, pack.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			expect(t, rep, tc.want)
+			for _, f := range rep.Findings {
+				if !strings.Contains(f.Message, "that this verifier does not know") || !strings.Contains(f.Message, "newer") {
+					t.Errorf("message = %q", f.Message)
+				}
+			}
+		})
+	}
+}
+
+func TestABoundNearTheLargestNumberDoesNotOverflow(t *testing.T) {
+	p := newPack(t).build()
+	rep, err := verifyBoth(t, p.files, pack.Options{Limits: pack.Limits{MaxFileBytes: math.MaxInt64, MaxTotalBytes: math.MaxInt64, MaxLineBytes: math.MaxInt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect(t, rep)
+	if got := (pack.Limits{MaxFileBytes: math.MaxInt64}).Resolved(); got.MaxFileBytes == math.MaxInt64 || got.MaxFileBytes < 1<<60 {
+		t.Errorf("resolved = %+v", got)
+	}
+	if got := (pack.Limits{}).Resolved(); got.MaxEntries != 10_000 || got.MaxRatio != 500 || got.MaxFileBytes != 2<<30 || got.MaxTotalBytes != 8<<30 || got.MaxLineBytes != 64<<20 {
+		t.Errorf("defaults = %+v", got)
+	}
+	if pack.MaxDocumentBytes != 64<<20 {
+		t.Errorf("MaxDocumentBytes = %d", pack.MaxDocumentBytes)
+	}
 }

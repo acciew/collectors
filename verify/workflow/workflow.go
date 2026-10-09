@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"unicode/utf8"
 
 	"go.acciew.io/collector/verify/chain"
@@ -48,6 +49,12 @@ const (
 	ReasonDigest = logio.ReasonDigest
 	// ReasonEvent: an entry's body is not an event.
 	ReasonEvent = logio.ReasonEvent
+	// ReasonLimit: a line is longer than the bound. It says nothing about the log.
+	ReasonLimit = logio.ReasonLimit
+	// ReasonUnknownMember: a line, or an event, holds a member this verifier does not
+	// know, which may be one a later revision of the format added. It says nothing
+	// about the log.
+	ReasonUnknownMember = logio.ReasonUnknownMember
 )
 
 // ReasonOf is the reason code of a fault from this package or from chain, or ""
@@ -87,13 +94,6 @@ func ParseEvent(body []byte) (Event, error) {
 	if err != nil {
 		return Event{}, fmt.Errorf("the body %w", err)
 	}
-	for name := range members {
-		switch name {
-		case "type", "actor", "data":
-		default:
-			return Event{}, fmt.Errorf("the body has a member this verifier does not know: %s", quote(name))
-		}
-	}
 	var ev Event
 	for _, f := range []struct {
 		name string
@@ -115,10 +115,33 @@ func ParseEvent(body []byte) (Event, error) {
 		}
 		ev.Data = raw
 	}
+	// A member beyond these is not a disagreement: it may be one a later revision of
+	// the format added. It is said last, after the body has been found to be an event.
+	for _, name := range sortedNames(members) {
+		switch name {
+		case "type", "actor", "data":
+		default:
+			return Event{}, &unknownMember{name: name}
+		}
+	}
 	return ev, nil
 }
 
-func quote(s string) string { return `"` + text.Show(s) + `"` }
+func sortedNames(m map[string]json.RawMessage) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// unknownMember is an event with a member this verifier does not know.
+type unknownMember struct{ name string }
+
+func (u *unknownMember) Error() string {
+	return fmt.Sprintf("the body holds a member %s that this verifier does not know: the file may be newer than this verifier", text.Quote(u.name))
+}
 
 // Options say how a log is verified.
 type Options struct {
@@ -136,9 +159,12 @@ type Options struct {
 //
 // It shows that the files agree with each other. It does not show who wrote them
 // or when, and whoever holds both a log and its anchor can rewrite both.
-func Verify(dir, name string) (Summary, error) {
+func Verify(dir, name string) (Summary, error) { return VerifyDir(dir, name, Limits{}) }
+
+// VerifyDir is Verify with limits.
+func VerifyDir(dir, name string, limits Limits) (Summary, error) {
 	return logio.VerifyDir(dir, name, func(name string, log, head io.Reader) (Summary, error) {
-		return VerifyReaders(name, log, head, Limits{})
+		return VerifyReaders(name, log, head, limits)
 	})
 }
 
@@ -164,7 +190,7 @@ func VerifyWith(name string, log, head io.Reader, opts Options) (Summary, error)
 	return logio.Run(name, log, head, opts.Limits, func(line int, raw []byte) (chain.Entry, error) {
 		e, err := decodeLine(raw)
 		if err != nil {
-			return chain.Entry{}, logio.LineFault(line, "%v", err)
+			return chain.Entry{}, logio.LineError(line, err)
 		}
 		if Digest(e.Body) != e.Digest {
 			return chain.Entry{}, logio.Faultf(logio.ReasonDigest, line, e.Sequence,
@@ -172,8 +198,12 @@ func VerifyWith(name string, log, head io.Reader, opts Options) (Summary, error)
 		}
 		ev, err := ParseEvent(e.Body)
 		if err != nil {
-			return chain.Entry{}, logio.Faultf(logio.ReasonEvent, line, e.Sequence,
-				"line %d, entry %d: %v", line, e.Sequence, err)
+			reason := logio.ReasonEvent
+			var unknown *unknownMember
+			if errors.As(err, &unknown) {
+				reason = logio.ReasonUnknownMember
+			}
+			return chain.Entry{}, logio.Faultf(reason, line, e.Sequence, "line %d, entry %d: %v", line, e.Sequence, err)
 		}
 		current, event = e, ev
 		return e.Entry, nil
@@ -187,7 +217,7 @@ func Read(r io.Reader, limits Limits, visit func(line int, e Entry) error) error
 	return logio.ReadLines(r, limits, func(line int, raw []byte) error {
 		e, err := decodeLine(raw)
 		if err != nil {
-			return logio.LineFault(line, "%v", err)
+			return logio.LineError(line, err)
 		}
 		return visit(line, e)
 	})

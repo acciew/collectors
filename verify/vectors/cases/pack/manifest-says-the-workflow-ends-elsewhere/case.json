@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "head workflow/workflow.jsonl"
+  ],
+  "note": "The manifest says the workflow log ends at an entry it does not."
+}

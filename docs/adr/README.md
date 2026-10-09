@@ -23,3 +23,4 @@ contract it speaks is defined in this repository.
 | [0003](0003-coarse-entitlements-for-aws-iam.md) | Coarse entitlements for AWS IAM | Accepted |
 | [0006](0006-collector-contract-shape.md) | Collector contract shape | Accepted |
 | [0007](0007-github-collector-shape.md) | The GitHub collector's shape, and why it needed no contract change | Accepted |
+| [0015](0015-evidence-verifier.md) | Publish the evidence verifier, and make its format a document | Accepted |

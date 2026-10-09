@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "unknown-member history/conn-1/alpha.jsonl"
+  ],
+  "note": "A member of a line of the collection log that the format does not have. The verifier says it is older than the file."
+}

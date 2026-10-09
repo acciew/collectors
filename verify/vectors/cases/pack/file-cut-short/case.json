@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "size README.txt"
+  ],
+  "note": "A listed file cut short."
+}

@@ -1,0 +1,10 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "manifest manifest.json",
+    "unlisted README.txt"
+  ],
+  "note": "A listed path that climbs out of the pack."
+}

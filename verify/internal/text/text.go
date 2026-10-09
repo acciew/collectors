@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -34,4 +35,17 @@ func Plain(err error) string {
 		err = pe.Err
 	}
 	return Show(err.Error())
+}
+
+// Quote renders a string inside double quotes, once, and so that where it ends is not
+// in doubt: as it is if it is plain, with a quote or a backslash in it escaped, and as
+// Show has quoted it if it is not plain.
+func Quote(s string) string {
+	if q := Show(s); q != s {
+		return q
+	}
+	if strings.ContainsAny(s, `"\\`) {
+		return strconv.Quote(s)
+	}
+	return `"` + s + `"`
 }

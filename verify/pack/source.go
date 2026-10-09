@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"sort"
@@ -33,6 +34,10 @@ type Limits struct {
 	MaxLineBytes int
 }
 
+// Resolved is the limits with the defaults filled in and the bounds kept below the
+// largest number, so that a bound can be added to and compared without overflow.
+func (l Limits) Resolved() Limits { return l.withDefaults() }
+
 func (l Limits) withDefaults() Limits {
 	if l.MaxEntries <= 0 {
 		l.MaxEntries = 10_000
@@ -49,15 +54,21 @@ func (l Limits) withDefaults() Limits {
 	if l.MaxLineBytes <= 0 {
 		l.MaxLineBytes = logio.DefaultMaxLineBytes
 	}
+	l.MaxFileBytes = min(l.MaxFileBytes, maxBound)
+	l.MaxTotalBytes = min(l.MaxTotalBytes, maxBound)
 	return l
 }
+
+// maxBound is the largest a bound on bytes is taken to be: one less than the
+// largest number, so that a bound and one more can be held in the same type.
+const maxBound = math.MaxInt64 - 1
 
 // ratioFloor is the size under which an entry's ratio means nothing.
 const ratioFloor = 1 << 20
 
-// maxDocBytes bounds the documents that are read whole: the manifest, the list
-// of digests, the campaign file and the anchors.
-const maxDocBytes = 64 << 20
+// MaxDocumentBytes bounds the documents that are read whole: manifest.json,
+// manifest.sha256 and campaign.json. An anchor is read only as far as an anchor can be.
+const MaxDocumentBytes = 64 << 20
 
 // entry is a file of the pack.
 type entry struct {
@@ -249,7 +260,7 @@ func (z *zipSource) list(lim Limits) ([]entry, []Finding, []Finding, error) {
 		if !within(size, lim.MaxFileBytes) {
 			return nil, nil, nil, limitError("%s expands to %d bytes, and a file of a pack may be %d at most", text.Show(name), size, lim.MaxFileBytes)
 		}
-		if total += size; !within(total, lim.MaxTotalBytes) {
+		if total += size; total < size || !within(total, lim.MaxTotalBytes) {
 			return nil, nil, nil, limitError("the archive expands to more than %d bytes, which is more than a pack does", lim.MaxTotalBytes)
 		}
 		if size > ratioFloor && f.CompressedSize64 > 0 && !within(size/f.CompressedSize64, int64(lim.MaxRatio)) {
@@ -275,7 +286,27 @@ func (z *zipSource) open(p string) (io.ReadCloser, error) {
 }
 
 func nameFinding(p string, err error) Finding {
-	return Finding{Reason: ReasonName, Path: p, Message: err.Error() + ", so it is not read"}
+	return Finding{Reason: ReasonName, Path: p, Message: err.Error() + ", so it is not read" + systemNote(p)}
+}
+
+// systemNote is said of a name that looks like one an operating system adds when a
+// folder is opened or an archive is made again: it is a finding, and it is not read as
+// an accusation.
+func systemNote(p string) string {
+	if !looksLeftBySystem(p) {
+		return ""
+	}
+	return "; this looks like a file the operating system added when the archive was made again; check the archive as it was handed over"
+}
+
+func looksLeftBySystem(p string) bool {
+	parts := strings.Split(p, "/")
+	for _, part := range parts {
+		if part == "__MACOSX" {
+			return true
+		}
+	}
+	return leftBySystem(parts[len(parts)-1], false)
 }
 
 // ---- reading what is in the pack
@@ -334,14 +365,14 @@ func (r *reader) readAll(path string) ([]byte, result, error) {
 	var body []byte
 	res, err := r.read(path, func(in io.Reader) error {
 		var err error
-		body, err = io.ReadAll(io.LimitReader(in, maxDocBytes+1))
+		body, err = io.ReadAll(io.LimitReader(in, MaxDocumentBytes+1))
 		return err
 	})
 	if err != nil {
 		return nil, res, err
 	}
-	if len(body) > maxDocBytes {
-		return nil, res, limitError("%s is longer than %d bytes, which no document of a pack is", text.Show(path), maxDocBytes)
+	if len(body) > MaxDocumentBytes {
+		return nil, res, limitError("%s is longer than %d bytes, which no document of a pack is", text.Show(path), MaxDocumentBytes)
 	}
 	return body, res, nil
 }

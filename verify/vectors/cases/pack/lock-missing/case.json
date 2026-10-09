@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "locked workflow/workflow.jsonl"
+  ],
+  "note": "The workflow log holds no lock of the campaign."
+}

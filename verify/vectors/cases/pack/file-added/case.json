@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "unlisted notes.txt"
+  ],
+  "note": "A file added that the manifest does not list, which sha256sum -c cannot see."
+}

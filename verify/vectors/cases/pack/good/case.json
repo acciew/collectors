@@ -1,0 +1,5 @@
+{
+  "kind": "pack",
+  "verified": true,
+  "note": "A small invented pack: one connection, three collections of which the second is the one the review was locked from, and a workflow chain that holds the lock and the collections, with another review's lock among its events."
+}

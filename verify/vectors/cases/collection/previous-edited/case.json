@@ -1,0 +1,12 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "link",
+  "digests": [
+    "f296b2e6af7c14b0335950c51077dc627f073aa8172fd2ffb0a979b07185bf20",
+    "a319fd1c8fda3eb8f631a2f26aa131801e3ee875a16848b2dabf6e0ed658fd25",
+    "e9595a0f9ad8f0493be666548e008f5d13e004a1873d47484ca5768a3adabb06"
+  ],
+  "note": "The second entry's previous changed to another value and everything else left right: it no longer names the entry before it."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "anchor-stale history/conn-1/alpha.jsonl"
+  ],
+  "note": "The anchor of the collection log made to name the second entry."
+}

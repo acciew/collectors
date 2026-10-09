@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"go.acciew.io/collector/verify/internal/text"
 )
@@ -57,9 +59,24 @@ func Members(raw []byte) (map[string]json.RawMessage, error) {
 	return out, nil
 }
 
-// quote renders a name from outside for a message, quoted.
-func quote(name string) string {
-	return `"` + text.Show(name) + `"`
+func quote(name string) string { return text.Quote(name) }
+
+// UnknownMember is the member that a decoder with DisallowUnknownFields refused, if
+// that is what the error says, wherever in a chain of wrapped errors it is.
+func UnknownMember(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	_, rest, ok := strings.Cut(err.Error(), "json: unknown field ")
+	if !ok {
+		return "", false
+	}
+	quoted, qerr := strconv.QuotedPrefix(rest)
+	if qerr != nil {
+		return "", false
+	}
+	name, uerr := strconv.Unquote(quoted)
+	return name, uerr == nil
 }
 
 // String reads a JSON string. A null, a number and everything else is refused.

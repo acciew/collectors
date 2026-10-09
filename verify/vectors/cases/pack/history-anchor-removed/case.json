@@ -1,0 +1,12 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "delete": [
+    "history/conn-1/alpha.head"
+  ],
+  "verified": false,
+  "findings": [
+    "anchor-missing history/conn-1/alpha.jsonl"
+  ],
+  "note": "The anchor of the collection log removed."
+}

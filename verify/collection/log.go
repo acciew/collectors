@@ -38,6 +38,11 @@ const (
 	ReasonLine = logio.ReasonLine
 	// ReasonDigest: an entry's run does not match the digest the entry carries.
 	ReasonDigest = logio.ReasonDigest
+	// ReasonLimit: a line is longer than the bound. It says nothing about the log.
+	ReasonLimit = logio.ReasonLimit
+	// ReasonUnknownMember: a line holds a member this verifier does not know, which
+	// may be one a later revision of the format added. It says nothing about the log.
+	ReasonUnknownMember = logio.ReasonUnknownMember
 )
 
 // Error is a fault in a collection log that is not about the chain. Its text
@@ -55,9 +60,12 @@ func ReasonOf(err error) string { return logio.ReasonOf(err) }
 //
 // It shows that the files agree with each other. It does not show who wrote them
 // or when, and whoever holds both a log and its anchor can rewrite both.
-func Verify(dir, name string) (Summary, error) {
+func Verify(dir, name string) (Summary, error) { return VerifyDir(dir, name, Limits{}) }
+
+// VerifyDir is Verify with limits.
+func VerifyDir(dir, name string, limits Limits) (Summary, error) {
 	return logio.VerifyDir(dir, name, func(name string, log, head io.Reader) (Summary, error) {
-		return VerifyReaders(name, log, head, Limits{})
+		return VerifyReaders(name, log, head, limits)
 	})
 }
 
@@ -91,7 +99,7 @@ func VerifyWith(name string, log, head io.Reader, opts Options) (Summary, error)
 	return logio.Run(name, log, head, opts.Limits, func(line int, raw []byte) (chain.Entry, error) {
 		e, err := decodeLine(raw)
 		if err != nil {
-			return chain.Entry{}, logio.LineFault(line, "%v", err)
+			return chain.Entry{}, logio.LineError(line, err)
 		}
 		if Digest(e.Run) != e.Digest {
 			return chain.Entry{}, logio.Faultf(logio.ReasonDigest, line, e.Sequence,
@@ -111,7 +119,7 @@ func Read(r io.Reader, limits Limits, visit func(line int, e Entry) error) error
 	return logio.ReadLines(r, limits, func(line int, raw []byte) error {
 		e, err := decodeLine(raw)
 		if err != nil {
-			return logio.LineFault(line, "%v", err)
+			return logio.LineError(line, err)
 		}
 		return visit(line, e)
 	})

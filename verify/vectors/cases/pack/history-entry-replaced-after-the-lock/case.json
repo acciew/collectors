@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "completed workflow/workflow.jsonl"
+  ],
+  "note": "The third collection replaced by another, the log, its anchor and the manifest made to agree. The workflow log still holds the completion of the one it replaced."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "sequence history/conn-1/alpha.jsonl"
+  ],
+  "note": "The second entry removed from the collection log."
+}

@@ -210,7 +210,7 @@ func TestAChangeToTheFilesIsNamed(t *testing.T) {
 		{"the anchor of another log", log, `{"format":1,"sequence":3,"chain":"` + c1 + `"}`, want{reason: "anchor-mismatch"}},
 		{"an anchor in format 2", log, `{"format":2,"sequence":3,"chain":"` + c3 + `"}`, want{reason: "format"}},
 		{"an anchor from before formats", log, `{"sequence":3,"chain":"` + c3 + `"}`, want{reason: "format"}},
-		{"an anchor with a field it does not know", log, `{"format":1,"sequence":3,"chain":"` + c3 + `","at":1}`, want{reason: "unreadable"}},
+		{"an anchor with a field it does not know", log, `{"format":1,"sequence":3,"chain":"` + c3 + `","at":1}`, want{reason: "unknown-member"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -252,11 +252,6 @@ func TestALineMustBeExactlyTheFormItIsWrittenIn(t *testing.T) {
 		name string
 		log  string
 	}{
-		{"an unknown member", at2(`"sequence":2,`, `"sequence":2,"note":"x",`)},
-		{"an unknown member of the run", at2(`"run":{`, `"run":{"extra":1,`)},
-		{"an unknown member of a key", at2(`{"scope":"ops\u003c\u0026\u003e","type":2,"id":"root"}`,
-			`{"scope":"ops\u003c\u0026\u003e","type":2,"id":"root","x":1}`)},
-		{"an unknown member of a scope", at2(`"status":9,`, `"status":9,"x":true,`)},
 		{"not JSON", ls[0] + "{ this is not an entry\n" + ls[2]},
 		{"an empty line", ls[0] + "\n" + ls[1] + ls[2]},
 		{"a blank line at the end", log + "\n"},
@@ -313,12 +308,39 @@ func TestAFaultInALineSaysWhichLine(t *testing.T) {
 	}
 }
 
-func TestAnUnknownMemberIsNamed(t *testing.T) {
+// A member this verifier does not know may be an optional one a later revision of
+// the format added, so nothing is said to disagree: the verifier is older than the
+// file, and says so in words that are not the decoder's.
+func TestAMemberThisVerifierDoesNotKnowIsSaidToBeThat(t *testing.T) {
+	bs := "\\"
 	log, head := good(t)
-	_, err := verify(t, replaceOnce(t, log, `"run":{"source":"alpha","started_at":"2026-03-01T00:00:00Z"`,
-		`"run":{"extra":1,"source":"alpha","started_at":"2026-03-01T00:00:00Z"`), head)
-	if err == nil || !strings.Contains(err.Error(), `unknown field "extra"`) {
-		t.Errorf("error = %v", err)
+	ls := lines(log)
+	at2 := func(old, replacement string) string {
+		return ls[0] + replaceOnce(t, ls[1], old, replacement) + ls[2]
+	}
+	cases := map[string]struct{ log, member string }{
+		"in the entry": {at2(`"sequence":2,`, `"sequence":2,"note":"x",`), "note"},
+		"in the run":   {at2(`"run":{`, `"run":{"extra":1,`), "extra"},
+		"in a scope":   {at2(`"status":9,`, `"status":9,"x":true,`), "x"},
+		"in a key": {at2(`{"scope":"ops`+bs+`u003c`+bs+`u0026`+bs+`u003e","type":2,"id":"root"}`,
+			`{"scope":"ops`+bs+`u003c`+bs+`u0026`+bs+`u003e","type":2,"id":"root","y":1}`), "y"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := verify(t, tc.log, head)
+			check(t, err, want{reason: "unknown-member", line: 2})
+			if err == nil {
+				return
+			}
+			for _, want := range []string{`holds a member "` + tc.member + `" that this verifier does not know`, "newer"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error = %q, want it to contain %q", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "json:") || strings.Contains(err.Error(), "unknown field") {
+				t.Errorf("error = %q: it speaks in the decoder's words", err)
+			}
+		})
 	}
 }
 
@@ -348,7 +370,7 @@ func TestALineLongerThanTheLimitIsRefusedNotSkipped(t *testing.T) {
 		t.Errorf("a line exactly as long as the limit: %v", err)
 	}
 	err := open(collection.Limits{MaxLineBytes: limit - 1})
-	check(t, err, want{reason: "line", line: 2})
+	check(t, err, want{reason: "limit", line: 2})
 	if err == nil || !strings.Contains(err.Error(), "longer than") {
 		t.Errorf("error = %v", err)
 	}
@@ -564,7 +586,7 @@ func TestAnInvalidByteIsNamedAsSuch(t *testing.T) {
 
 func TestInputWithNoLineFeedInItIsBoundedToo(t *testing.T) {
 	_, err := collection.VerifyReaders("x", strings.NewReader(strings.Repeat("a", 5000)), nil, collection.Limits{MaxLineBytes: 100})
-	check(t, err, want{reason: "line", line: 1})
+	check(t, err, want{reason: "limit", line: 1})
 	if err == nil || !strings.Contains(err.Error(), "longer than 100 bytes") {
 		t.Errorf("error = %v", err)
 	}

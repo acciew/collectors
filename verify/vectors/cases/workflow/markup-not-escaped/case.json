@@ -1,0 +1,6 @@
+{
+  "kind": "workflow",
+  "verified": false,
+  "reason": "line",
+  "note": "A body with < and & written as themselves, where a body writes them as escapes."
+}

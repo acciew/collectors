@@ -1,3 +1,5 @@
 # The fixtures of the verifier are byte-exact: a checkout that rewrote line endings would
 # make a log that verifies read as altered.
 /verify/**/testdata/** -text
+/verify/**/cases/** -text
+/verify/**/golden/** -text

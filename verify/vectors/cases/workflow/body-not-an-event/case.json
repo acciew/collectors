@@ -1,0 +1,9 @@
+{
+  "kind": "workflow",
+  "verified": false,
+  "reason": "event",
+  "digests": [
+    "37a76343c8e3c695feeaadfe52329673ff129c65f99f55ae6056c9254f4c481d"
+  ],
+  "note": "Every digest and chain value right, and the body is not an event."
+}

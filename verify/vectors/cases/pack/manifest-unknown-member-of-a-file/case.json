@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "unknown-member manifest.json"
+  ],
+  "note": "A member of a file entry that the format does not have."
+}

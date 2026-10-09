@@ -1,0 +1,7 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "error": "format",
+  "note": "A manifest of a version this verifier does not know. The pack is not called altered; it is not checked."
+}

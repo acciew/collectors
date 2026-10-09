@@ -1,0 +1,7 @@
+{
+  "kind": "workflow",
+  "base": "workflow/good",
+  "verified": false,
+  "reason": "line",
+  "note": "A space in a body, which would not change what it says and does change its bytes."
+}

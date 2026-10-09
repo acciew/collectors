@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "sequence workflow/workflow.jsonl"
+  ],
+  "note": "An event removed from the middle of the workflow log."
+}

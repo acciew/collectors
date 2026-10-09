@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "digest workflow/workflow.jsonl"
+  ],
+  "note": "An event of the workflow log rewritten. Its digest no longer matches."
+}

@@ -1,0 +1,14 @@
+pack DIR
+
+  manifest.json                  SHA-256 e339b1247a1a94c595e140b4e889d1d959616a3949aebd5ea21b3398a763fd30
+  listed files                   10 files match the manifest
+  history/conn-1/alpha.jsonl     3 collections, consistent with its own chain
+  workflow/workflow.jsonl        7 events, consistent with its own chain
+  bounds in force                10000 files and folders; 2 GiB a file; 8 GiB in all; 500 times its size for an archive entry past 1 MiB
+                                 64 MiB a line of a log; 64 MiB each for manifest.json, manifest.sha256 and campaign.json
+! notes.txt: is in the pack and the manifest does not list it
+
+1 finding. The pack does not verify.
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

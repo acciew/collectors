@@ -1,0 +1,7 @@
+{
+  "kind": "collection",
+  "base": "collection/good",
+  "verified": false,
+  "reason": "entries-missing",
+  "note": "An anchor, and a log with nothing in it."
+}

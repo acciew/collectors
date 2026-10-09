@@ -1,0 +1,10 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "size README.txt",
+    "size document.json"
+  ],
+  "note": "The contents of two listed files swapped."
+}

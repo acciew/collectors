@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "sha256 snapshots/conn-1/snapshot-alpha-2.json"
+  ],
+  "note": "A stored collection changed."
+}

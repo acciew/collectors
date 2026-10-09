@@ -1,0 +1,7 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "error": "unreadable",
+  "note": "manifest.json that is not JSON."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "digest history/conn-1/alpha.jsonl"
+  ],
+  "note": "A record in the collection log edited and the manifest made to agree. The entry's digest no longer matches."
+}

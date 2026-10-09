@@ -1,0 +1,8 @@
+  x                3 collections, consistent with its own chain
+
+bound in force: 64 MiB a line (--max-line-bytes)
+
+What a pass shows: each log is hash-chained and checkable against itself and its anchor: every
+entry holds the digest of its content, every link names the entry before it, and the last entry is
+the one the anchor names. It does not show who wrote a log or when, that what it records is true,
+or that whoever holds both a log and its anchor did not rewrite both.

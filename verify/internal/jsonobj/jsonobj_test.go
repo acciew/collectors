@@ -1,6 +1,9 @@
 package jsonobj_test
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -110,6 +113,32 @@ func TestArray(t *testing.T) {
 	for _, in := range []string{`null`, `{}`, `"x"`, `1`, `[1,]`, `[1] [2]`, `[`, ``} {
 		if _, err := jsonobj.Array([]byte(in)); err == nil {
 			t.Errorf("Array(%s) was read", in)
+		}
+	}
+}
+
+// The decoder says it in its own words; callers want the member.
+func TestUnknownMemberIsTheMemberADecoderRefused(t *testing.T) {
+	var v struct{ A int }
+	dec := json.NewDecoder(strings.NewReader(`{"A":1,"extra":2}`))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&v)
+	if name, ok := jsonobj.UnknownMember(err); !ok || name != "extra" {
+		t.Errorf("UnknownMember(%v) = %q, %v", err, name, ok)
+	}
+	wrapped := fmt.Errorf("is not an entry: %w", err)
+	if name, ok := jsonobj.UnknownMember(wrapped); !ok || name != "extra" {
+		t.Errorf("wrapped: %q, %v", name, ok)
+	}
+	// A name with a quote and an escape in it is the name, not its spelling.
+	dec = json.NewDecoder(strings.NewReader(`{"a\"bA":2}`))
+	dec.DisallowUnknownFields()
+	if name, ok := jsonobj.UnknownMember(dec.Decode(&v)); !ok || name != `a"bA` {
+		t.Errorf("UnknownMember = %q, %v", name, ok)
+	}
+	for _, other := range []error{nil, errors.New("something else"), errors.New(`json: unknown field `), errors.New(`json: unknown field x`)} {
+		if name, ok := jsonobj.UnknownMember(other); ok {
+			t.Errorf("UnknownMember(%v) = %q", other, name)
 		}
 	}
 }

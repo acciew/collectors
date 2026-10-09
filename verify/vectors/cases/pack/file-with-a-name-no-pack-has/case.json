@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "name x y.txt"
+  ],
+  "note": "A file whose name has a space in it, which no pack has, added to the pack."
+}

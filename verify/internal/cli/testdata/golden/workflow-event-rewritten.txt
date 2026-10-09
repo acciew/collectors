@@ -1,0 +1,6 @@
+! x                line 4, entry 4: the event does not match its digest
+
+bound in force: 64 MiB a line (--max-line-bytes)
+
+A check that fails says the files disagree with each other. It does not say who changed anything,
+or when.

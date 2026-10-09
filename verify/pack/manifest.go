@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"go.acciew.io/collector/verify/internal/jsonobj"
@@ -46,11 +47,31 @@ var topLevel = map[string]bool{
 	"document": false, "files": true, "collections": true, "heads": true, "attestations": false,
 }
 
+// issue is one way a document is not in a shape this verifier reads. An unknown
+// one is a member the verifier does not know, which a later revision of the format
+// may have added: it is not a disagreement.
+type issue struct {
+	unknown bool
+	msg     string
+}
+
+// issues collects them: add for a shape that is wrong, unknown for a member that
+// is not known.
+type issues struct{ list []issue }
+
+func (p *issues) add(format string, args ...any) {
+	p.list = append(p.list, issue{msg: fmt.Sprintf(format, args...)})
+}
+
+func (p *issues) unknown(where, name string) {
+	p.list = append(p.list, issue{unknown: true, msg: fmt.Sprintf("%s holds a member %s that this verifier does not know: the file may be newer than this verifier", where, quote(name))})
+}
+
 // parseManifest reads manifest.json. A version that is not 1, and a document
 // that is not JSON or not an object, are errors: the pack cannot be checked. A
 // manifest in a shape this verifier does not know is returned as problems, each
 // worded to be a finding.
-func parseManifest(raw []byte) (*manifest, []string, error) {
+func parseManifest(raw []byte) (*manifest, []issue, error) {
 	members, err := jsonobj.Members(raw)
 	if err != nil {
 		return nil, nil, notReadable(err, "manifest.json %v", err)
@@ -61,12 +82,12 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 		return nil, nil, formatError(members["version"])
 	}
 	m := &manifest{}
-	var problems []string
-	problem := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+	var ps issues
+	problem := ps.add
 
-	for name := range members {
+	for _, name := range sortedNames(members) {
 		if _, known := topLevel[name]; !known {
-			problem("has a member this verifier does not know: %s", quote(name))
+			ps.unknown("the manifest", name)
 		}
 	}
 	require := func(name string) json.RawMessage {
@@ -84,11 +105,11 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 		} else {
 			m.campaignID = stringMember(c, "campaign", "id", problem)
 			m.lockDigest = stringMember(c, "campaign", "lock_digest", problem)
-			for name := range c {
+			for _, name := range sortedNames(c) {
 				switch name {
 				case "id", "name", "lock_digest", "locked_at", "items":
 				default:
-					problem("campaign has a member this verifier does not know: %s", quote(name))
+					ps.unknown("campaign", name)
 				}
 			}
 		}
@@ -113,7 +134,7 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 			if mf.sha256 != "" && !hex64.MatchString(mf.sha256) {
 				problem("%s has a sha256 that is not 64 lowercase hexadecimal characters", where)
 			}
-			onlyMembers(f, where, problem, "path", "sha256", "bytes")
+			onlyMembers(f, where, &ps, "path", "sha256", "bytes")
 			m.files = append(m.files, mf)
 		}
 		if err == nil && len(items) == 0 {
@@ -143,7 +164,7 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 				headSeq:    uintMember(c, where, "head_seq", problem),
 				headChain:  stringMember(c, where, "head_chain_value", problem),
 			}
-			onlyMembers(c, where, problem, "connection", "plugin", "seq", "digest", "chain_value", "snapshot", "head_seq", "head_chain_value")
+			onlyMembers(c, where, &ps, "connection", "plugin", "seq", "digest", "chain_value", "snapshot", "head_seq", "head_chain_value")
 			for _, part := range []struct{ name, v string }{{"connection", mc.connection}, {"plugin", mc.plugin}} {
 				if part.v != "" && !plainPart(part.v) {
 					problem("%s has a %s that is not a plain name, and names a file", where, part.name)
@@ -161,7 +182,7 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 		if err != nil {
 			problem("heads %v", err)
 		} else {
-			onlyMembers(h, "heads", problem, "workflow")
+			onlyMembers(h, "heads", &ps, "workflow")
 			if wraw, ok := h["workflow"]; !ok {
 				problem("heads has no workflow")
 			} else if w, err := jsonobj.Members(wraw); err != nil {
@@ -169,11 +190,11 @@ func parseManifest(raw []byte) (*manifest, []string, error) {
 			} else {
 				m.workflow.seq = uintMember(w, "the workflow head", "seq", problem)
 				m.workflow.chain = stringMember(w, "the workflow head", "chain_value", problem)
-				onlyMembers(w, "the workflow head", problem, "seq", "chain_value")
+				onlyMembers(w, "the workflow head", &ps, "seq", "chain_value")
 			}
 		}
 	}
-	return m, problems, nil
+	return m, ps.list, nil
 }
 
 func formatError(version json.RawMessage) *Error {
@@ -216,20 +237,30 @@ func uintMember(m map[string]json.RawMessage, where, name string, problem func(s
 	return n
 }
 
-// onlyMembers adds a problem for each member that is not one of those listed.
-func onlyMembers(m map[string]json.RawMessage, where string, problem func(string, ...any), known ...string) {
-	for name := range m {
+// onlyMembers adds an unknown-member problem for each member that is not one of
+// those listed.
+func onlyMembers(m map[string]json.RawMessage, where string, ps *issues, known ...string) {
+	for _, name := range sortedNames(m) {
 		var ok bool
 		for _, k := range known {
 			ok = ok || k == name
 		}
 		if !ok {
-			problem("%s has a member this verifier does not know: %s", where, quote(name))
+			ps.unknown(where, name)
 		}
 	}
 }
 
-func quote(s string) string { return `"` + text.Show(s) + `"` }
+func sortedNames(m map[string]json.RawMessage) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func quote(s string) string { return text.Quote(s) }
 
 // expectedList is manifest.sha256 as the manifest gives it: a line for each file
 // the manifest lists, in its order, and then the manifest itself.
@@ -257,12 +288,12 @@ type campaignSource struct {
 // parseCampaign reads campaign.json: the review's own facts, of which the
 // verifier reads the id, the lock digest and the collections it was locked from.
 // Another member is allowed and not read.
-func parseCampaign(raw []byte) (*campaignFile, []string) {
-	var problems []string
-	problem := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+func parseCampaign(raw []byte) (*campaignFile, []issue) {
+	var ps issues
+	problem := ps.add
 	members, err := jsonobj.Members(raw)
 	if err != nil {
-		return nil, []string{"is not a JSON object that can be read: " + err.Error()}
+		return nil, []issue{{msg: "is not a JSON object that can be read: " + err.Error()}}
 	}
 	c := &campaignFile{
 		id:         stringMember(members, "the campaign", "id", problem),
@@ -271,7 +302,7 @@ func parseCampaign(raw []byte) (*campaignFile, []string) {
 	sraw, ok := members["sources"]
 	if !ok {
 		problem("the campaign has no sources")
-		return c, problems
+		return c, ps.list
 	}
 	items, err := jsonobj.Array(sraw)
 	if err != nil {
@@ -296,7 +327,7 @@ func parseCampaign(raw []byte) (*campaignFile, []string) {
 		} else if _, err := jsonobj.String(raw); err != nil {
 			problem("%s has a name that is not a string", where)
 		}
-		onlyMembers(s, where, problem, "connection", "name", "plugin", "seq", "digest", "chain_value")
+		onlyMembers(s, where, &ps, "connection", "name", "plugin", "seq", "digest", "chain_value")
 	}
-	return c, problems
+	return c, ps.list
 }

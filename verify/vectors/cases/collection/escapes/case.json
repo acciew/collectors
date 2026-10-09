@@ -1,0 +1,8 @@
+{
+  "kind": "collection",
+  "verified": true,
+  "digests": [
+    "9740639db4697583fdd6ef6051fde39a04c4ecebf4d1ab35989468866efc3d1d"
+  ],
+  "note": "A name with every character that needs an escape: backspace and form feed, line feed, carriage return, tab, U+0001, DEL, U+2028 and U+2029, <, > and &, a quote, a backslash, a slash, non-ASCII and a real U+FFFD."
+}

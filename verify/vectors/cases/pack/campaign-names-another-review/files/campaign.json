@@ -1,0 +1,22 @@
+{
+  "deadline": "2026-10-20T09:00:00Z",
+  "id": "c-2",
+  "items": 3,
+  "items_without_address": 2,
+  "lock_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+  "locked_at": "2026-10-06T09:00:00Z",
+  "name": "Q4 access review",
+  "reviewer": "reviewer@example.com",
+  "sources": [
+    {
+      "chain_value": "f809155c2b9d4971c05ab0cf4cbde5f06112e014340b21882c476f5308676373",
+      "connection": "conn-1",
+      "digest": "a319fd1c8fda3eb8f631a2f26aa131801e3ee875a16848b2dabf6e0ed658fd25",
+      "name": "prod alpha",
+      "plugin": "alpha",
+      "seq": 2
+    }
+  ],
+  "state": "open",
+  "status": "OPEN, INCOMPLETE"
+}

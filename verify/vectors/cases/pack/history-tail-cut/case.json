@@ -1,0 +1,9 @@
+{
+  "kind": "pack",
+  "base": "pack/good",
+  "verified": false,
+  "findings": [
+    "tail-cut history/conn-1/alpha.jsonl"
+  ],
+  "note": "The last entry removed from the collection log and its anchor left as it was."
+}
