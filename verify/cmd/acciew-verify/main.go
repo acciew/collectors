@@ -23,7 +23,7 @@ import (
 
 // version is set by the linker at release (-X main.version=0.2.0). What it holds is
 // what a build that is not stamped reports, and `task release:bump` moves it.
-var version = "0.2.0-dev"
+var version = "0.3.0-dev"
 
 func main() {
 	info, _ := debug.ReadBuildInfo()
