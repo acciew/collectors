@@ -54,6 +54,9 @@ and what has not been verified.
   gh attestation verify <archive> --repo acciew/collectors \
     --signer-workflow acciew/collectors/.github/workflows/release.yml
   ```
+- `BINARIES.sha256`, in the same release and attested the same way, lists the digest of each program
+  file inside the archives (`<digest>  <archive folder>/<file>`). It lets anyone compare a collector
+  program file with the published one: `sha256sum acciew-collector-keycloak` (`shasum -a 256` on macOS), then look for that digest in it.
 - Collectors do not import each other, and the SDK imports no collector. CI
   enforces both (`importlint.json`). The agent imports no collector either, and
   nothing imports the agent.

@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sums: ${{ steps.sums.outputs.sums }}
+      binaries: ${{ steps.sums.outputs.binaries }}
     env:
       VERSION: ${{ inputs.version }}
     steps:
@@ -90,7 +91,9 @@ jobs:
       # next job can tell that what it downloaded is what was built here.
       - name: Digests
         id: sums
-        run: echo "sums=$(base64 -w0 dist/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sums=$(base64 -w0 dist/SHA256SUMS)" >> "$GITHUB_OUTPUT"
+          echo "binaries=$(base64 -w0 dist/BINARIES.sha256)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -111,6 +114,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       SUMS: ${{ needs.build.outputs.sums }}
+      BINARIES: ${{ needs.build.outputs.binaries }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -128,6 +132,8 @@ jobs:
             exit 1
           }
           cmp dist/SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
+          printf '%s' "$BINARIES" | base64 -d > "$RUNNER_TEMP/BINARIES.sha256"
+          cmp dist/BINARIES.sha256 "$RUNNER_TEMP/BINARIES.sha256"
 
       # Before anything is signed, so a refused run leaves no record behind. The
       # list is taken first: in an `if` a failing gh would read as "no draft".
@@ -150,6 +156,7 @@ jobs:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/BINARIES.sha256
 
       - name: Draft the release
         env:
@@ -159,5 +166,5 @@ jobs:
           set -eu
           # A version with a hyphen is a pre-release and must not become "Latest".
           case "$VERSION" in *-*) pre=--prerelease ;; *) pre= ;; esac
-          gh release create "v$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
+          gh release create "v$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS dist/BINARIES.sha256 \
             --draft $pre --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes

@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -38,6 +39,9 @@ const verifier = "acciew-verify"
 // For Windows only the verifier ships, in a zip: an auditor there is handed an evidence
 // pack and has no use for the collectors or the agent, which are not built for Windows.
 const windowsExe = verifier + ".exe"
+
+// What is in an archive besides program files. BINARIES.sha256 lists the program files only.
+var documents = []string{"LICENSE", "NOTICE", "README.md"}
 
 // A zip entry carries a time, and a fixed one keeps a build to the same bytes. This is the
 // earliest time a zip can hold.
@@ -66,12 +70,28 @@ func TestArchives(t *testing.T) {
 		t.Errorf("SHA256SUMS lists %d files, want one per platform (%d)", len(sums), len(platforms))
 	}
 
+	// Every program file in every archive is in BINARIES.sha256, and nothing else is.
+	listed := readBinaries(t, filepath.Join(dist, "BINARIES.sha256"))
+	seen := map[string]bool{}
+	defer func() {
+		var extra []string
+		for key := range listed {
+			if !seen[key] {
+				extra = append(extra, key)
+			}
+		}
+		slices.Sort(extra)
+		for _, key := range extra {
+			t.Errorf("BINARIES.sha256 lists %s, which is in no archive", key)
+		}
+	}()
+
 	for _, platform := range platforms {
 		goos, goarch, _ := strings.Cut(platform, "/")
 		name := "acciew-collectors-" + version + "-" + goos + "-" + goarch
 		t.Run(platform, func(t *testing.T) {
 			if goos == "windows" {
-				checkWindowsZip(t, dist, sums, version, goarch)
+				checkWindowsZip(t, dist, sums, version, goarch, listed, seen)
 				return
 			}
 			path := filepath.Join(dist, name+".tar.gz")
@@ -80,7 +100,7 @@ func TestArchives(t *testing.T) {
 			}
 
 			files := unpack(t, path, name)
-			want := []string{"LICENSE", "NOTICE", "README.md"}
+			want := slices.Clone(documents)
 			for _, c := range collectors {
 				want = append(want, "acciew-collector-"+c)
 			}
@@ -94,6 +114,7 @@ func TestArchives(t *testing.T) {
 			if !slices.Equal(got, want) {
 				t.Errorf("archive holds %v, want exactly %v", got, want)
 			}
+			checkListed(t, listed, seen, name, files)
 
 			var bins []built
 			for _, c := range collectors {
@@ -159,7 +180,7 @@ func checkBuild(t *testing.T, b built, bin, goos, goarch string) {
 // checkWindowsZip checks the Windows archive of a platform: listed in SHA256SUMS, holding
 // the verifier and the documents and nothing else, in a fixed order with a fixed time,
 // and the verifier is a Windows executable for the right processor.
-func checkWindowsZip(t *testing.T, dist string, sums map[string]string, version, goarch string) {
+func checkWindowsZip(t *testing.T, dist string, sums map[string]string, version, goarch string, listed map[string]string, seen map[string]bool) {
 	t.Helper()
 	name := verifier + "-" + version + "-windows-" + goarch
 	path := filepath.Join(dist, name+".zip")
@@ -167,11 +188,12 @@ func checkWindowsZip(t *testing.T, dist string, sums map[string]string, version,
 		t.Errorf("SHA256SUMS has %q for %s, the file is %s", sums[name+".zip"], name+".zip", got)
 	}
 
-	files, listed := unzip(t, path, name)
-	want := []string{"LICENSE", "NOTICE", "README.md", windowsExe}
-	if !slices.Equal(listed, want) {
-		t.Errorf("archive holds %v in this order, want exactly %v", listed, want)
+	files, order := unzip(t, path, name)
+	want := append(slices.Clone(documents), windowsExe)
+	if !slices.Equal(order, want) {
+		t.Errorf("archive holds %v in this order, want exactly %v", order, want)
 	}
+	checkListed(t, listed, seen, name, files)
 
 	exe := files[windowsExe]
 	if exe == "" {
@@ -304,6 +326,31 @@ func unpack(t *testing.T, path, top string) map[string]string {
 	}
 }
 
+// checkListed compares each program file of an archive with its line in BINARIES.sha256,
+// by the path "<archive>/<file>" a line gives it. The documents are not program files.
+func checkListed(t *testing.T, listed map[string]string, seen map[string]bool, top string, files map[string]string) {
+	t.Helper()
+	for file, path := range files {
+		key := top + "/" + file
+		if slices.Contains(documents, file) {
+			if _, ok := listed[key]; ok {
+				seen[key] = true
+				t.Errorf("BINARIES.sha256 lists %s, which is not a program file", key)
+			}
+			continue
+		}
+		seen[key] = true
+		want, ok := listed[key]
+		if !ok {
+			t.Errorf("BINARIES.sha256 does not list %s", key)
+			continue
+		}
+		if got := digest(t, path); want != got {
+			t.Errorf("BINARIES.sha256 has %q for %s, the file is %s", want, key, got)
+		}
+	}
+}
+
 func digest(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -327,6 +374,42 @@ func readSums(t *testing.T, path string) map[string]string {
 			t.Fatalf("SHA256SUMS line %q is not \"<digest>  <file>\"", line)
 		}
 		out[strings.TrimPrefix(file, "*")] = sum
+	}
+	return out
+}
+
+// A line of BINARIES.sha256 is a line of SHA256SUMS: the digest, two spaces, and the path of
+// the program file inside its archive's folder.
+var binariesLine = regexp.MustCompile(`^([0-9a-f]{64})  ([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$`)
+
+// readBinaries reads BINARIES.sha256 as `sha256sum -c` would, and also insists on the order
+// (by path, bytewise) and the final newline, so the same release always makes the same file.
+func readBinaries(t *testing.T, path string) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read BINARIES.sha256: %v", err)
+	}
+	text := string(b)
+	if !strings.HasSuffix(text, "\n") {
+		t.Errorf("BINARIES.sha256 does not end with a newline")
+	}
+	out := map[string]string{}
+	prev := ""
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		m := binariesLine.FindStringSubmatch(line)
+		if m == nil {
+			t.Errorf("BINARIES.sha256 line %q is not \"<digest>  <archive>/<file>\"", line)
+			continue
+		}
+		if _, dup := out[m[2]]; dup {
+			t.Errorf("BINARIES.sha256 lists %s twice", m[2])
+		}
+		if m[2] <= prev {
+			t.Errorf("BINARIES.sha256 has %s after %s; lines are sorted by path", m[2], prev)
+		}
+		prev = m[2]
+		out[m[2]] = m[1]
 	}
 	return out
 }
