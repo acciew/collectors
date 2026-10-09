@@ -69,7 +69,26 @@ func Verify(dir, name string) (Summary, error) {
 // read is the entry before the one in hand and, for the anchor, the last entry
 // and the one it names: nothing that grows with the length of the log.
 func VerifyReaders(name string, log, head io.Reader, limits Limits) (Summary, error) {
-	return logio.Run(name, log, head, limits, func(line int, raw []byte) (chain.Entry, error) {
+	return VerifyWith(name, log, head, Options{Limits: limits})
+}
+
+// Options say how a log is verified.
+type Options struct {
+	Limits Limits
+	// Entry, if not nil, is called with each entry once it has passed every
+	// check, in order. Nothing it is given is true of the log until the
+	// verification as a whole has returned without a fault.
+	Entry func(e Entry)
+}
+
+// VerifyWith is VerifyReaders with options.
+func VerifyWith(name string, log, head io.Reader, opts Options) (Summary, error) {
+	var current Entry
+	var accepted func()
+	if opts.Entry != nil {
+		accepted = func() { opts.Entry(current) }
+	}
+	return logio.Run(name, log, head, opts.Limits, func(line int, raw []byte) (chain.Entry, error) {
 		e, err := decodeLine(raw)
 		if err != nil {
 			return chain.Entry{}, logio.LineFault(line, "%v", err)
@@ -78,8 +97,9 @@ func VerifyReaders(name string, log, head io.Reader, limits Limits) (Summary, er
 			return chain.Entry{}, logio.Faultf(logio.ReasonDigest, line, e.Sequence,
 				"line %d, entry %d: the record does not match its digest", line, e.Sequence)
 		}
+		current = e
 		return e.Entry, nil
-	}, nil)
+	}, accepted)
 }
 
 // Read reads the lines of a log as entries, strictly, and hands each to visit

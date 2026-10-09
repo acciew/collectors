@@ -388,7 +388,8 @@ name in another case. A member name is compared as the text it stands for, so `"
 
 A verifier does not interpret `data`, or the type, beyond that: a type it has never heard of is
 chained like any other, and the log is evidence that it was not cut or reordered, and nothing
-more. Which types an evidence pack reads, and what it reads from them, is described with the pack.
+more. Which types an evidence pack reads, and what it reads from them, is described under
+[Cross-references](#cross-references).
 
 ### Checking a workflow log
 
@@ -404,6 +405,182 @@ Then, as for a collection log: with no anchor, the first entry that has passed t
 `anchor-missing`, and after the last line the anchor is checked against the entries. A log
 without a final line feed is refused as cut short.
 
+## The evidence pack
+
+An evidence pack is what a buyer hands an auditor for one review. It is a folder, or a ZIP
+archive of one, with these files. Every path is relative to the root of the pack and is written
+with `/`.
+
+| Path                                          | What it is                                                           |
+|-----------------------------------------------|----------------------------------------------------------------------|
+| `manifest.json`                               | Every other file with its size and digest, the collection entries the review was locked from, and where the logs end. |
+| `manifest.sha256`                             | The same digests as a list `sha256sum -c` reads.                     |
+| `campaign.json`                               | The review's own facts, and the collections it was locked from.      |
+| `history/<connection>/<plugin>.jsonl` and `.head` | A collection log and its anchor, one pair for each collection the review was locked from. |
+| `workflow/workflow.jsonl` and `.head`         | The workflow log and its anchor.                                     |
+| `snapshots/<connection>/<file>`               | The stored collections the review was locked from. They are checked by digest only. |
+| anything else                                 | The register, the report, the document and the README. They are checked by digest only. |
+
+### What a check of a pack shows
+
+A pass shows that the files in the pack are the ones this manifest names, that each log agrees
+with itself and with its anchor, and that the manifest, `campaign.json` and the workflow log name
+the same collection entries and the same ends of the logs.
+
+It does not show that the manifest is the one the service made. Nothing inside a pack ties
+`manifest.json` to anything outside it: a pack whose files, logs, anchors, manifest and
+`manifest.sha256` were all rewritten together passes. The check reports the digest of
+`manifest.json` so that it can be compared with the record the service keeps of each manifest it
+hands out (the `pack.built` event on its own trail); keeping the ends of the logs somewhere else is
+the further answer to a whole chain being rewritten, and is not done here. It does not tie a stored
+collection in `snapshots/` to the log entry it was locked from beyond the digest the manifest lists
+for the file: deriving a collection's digest from the stored file needs the format of that file
+specified, and is for a later format. It does not show who made the pack or when, or that what the
+logs record is true. Do not describe a pass as proof against alteration.
+
+### Names
+
+Every part of a path in a pack is a plain name: 1 to 128 letters, digits, dots, dashes and
+underscores, starting with a letter or a digit, and not one of the names Windows will not make a file
+of (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, with any extension). A path has at
+most 8 parts. So there is no empty part, no `.` or `..`, no backslash, no absolute path and no
+character a terminal would act on. A `connection` and a `plugin` are such names too, because they
+make up paths.
+
+### Reading a folder or an archive
+
+A pack is read where it is. Nothing is extracted, written or run.
+
+- **A folder** is opened as a root, so that nothing outside it is read. A link, a folder with a
+  strange name, or any file that is not a plain file is named and left alone; a link is never followed.
+  What an operating system leaves in a folder that has been opened (`.DS_Store`, `Thumbs.db`,
+  `desktop.ini`, files whose names begin `._`, and a `__MACOSX` folder) is not read and is reported
+  as a **note**, which does not count against the pack. A pack is to be checked as it was handed
+  over, which is as the archive.
+- **An archive** is read entry by entry, in place. An entry whose name is not a plain name is named and
+  never opened. A link, or any entry that is not a plain file, is named and never opened. A name that
+  appears twice is named, and only its first entry is read. What an operating system leaves is an
+  entry like any other: named, or unlisted, and not a note. A **folder** is an entry whose name ends in
+  `/`, which is how ZIP says it; folder entries with plain names are ignored. A name with no slash is a
+  file, whatever its mode bits say, and one with mode bits for a folder is not a plain file and is
+  named, never skipped. A folder entry that holds data is named.
+- **The central directory is the authority** for an archive's names, methods and sizes, as it is for
+  ZIP readers generally. A verifier also reads each entry's local header, the one before its data,
+  and refuses an archive in which a local header gives another name or method than the central
+  directory, or, where it records them, another size or digest: that is not one set of files that
+  two readers read the same way, and the archive is not read.
+- **An anchor** is read as far as an anchor can be, 1,025 bytes, and the rest of the file only for
+  its digest.
+
+A verifier bounds what it takes in, and refuses a pack that goes past a bound; that is "could not
+check" and says nothing about the pack. The reference verifier's defaults, which can be raised, are
+10,000 files and folders, 2 GiB for a file, 8 GiB in all, and, for an archive entry of more than a
+megabyte, 500 times its compressed size. Sizes are counted as files are read as well as from the
+headers, since a header can say anything.
+
+### manifest.json
+
+The manifest is a JSON object. A verifier reads its `version` first: if it is missing or is not
+exactly `1`, the manifest is **in a format the verifier does not know**, which is an error and
+never an alteration, and nothing else in the pack is judged. A manifest that is not JSON, is not
+an object, or repeats a member name is unreadable.
+
+The members of the manifest are these, and no others:
+
+| Member         | Read? | What it holds                                                                 |
+|----------------|-------|-------------------------------------------------------------------------------|
+| `version`      | yes   | The number 1.                                                                 |
+| `campaign`     | yes   | An object: `id` and `lock_digest`, strings that are not empty, which are read, and `name`, `locked_at` and `items`, which are allowed and not read. |
+| `files`        | yes   | A list, not empty, of objects with exactly `path`, `sha256` (64 lowercase hexadecimal characters) and `bytes` (a whole number): every file of the pack but `manifest.json` and `manifest.sha256`. The service lists them in order of path; the order is not required, and `manifest.sha256` follows the manifest's own. |
+| `collections`  | yes   | A list, not empty, of objects with exactly `connection`, `plugin`, `seq`, `digest`, `chain_value`, `snapshot`, `head_seq` and `head_chain_value`: the entries of collection logs the review was locked from. |
+| `heads`        | yes   | An object with exactly `workflow`, an object with exactly `seq` and `chain_value`: where the workflow log ends. |
+| `generated_at`, `completeness`, `finalization`, `document`, `attestations` | no | Facts about the review and the document. They are allowed and not read, and a pass says nothing about them. |
+
+A member that is not in the table, in the objects whose members are given as exact, is refused as
+`manifest`, so that a manifest from a later revision of the format is not read as though it were this
+one. A list of files that names a path twice, names `manifest.json` or `manifest.sha256`, or names a
+path that is not a plain name is refused as `manifest` too.
+
+### manifest.sha256
+
+`manifest.sha256` is exactly this text: for each entry of `files` in order, the line
+`<sha256>  <path>` and a line feed (two spaces between), and then the line
+`<sha256 of manifest.json>  manifest.json` and a line feed. It lists the manifest's digests and the
+manifest and nothing else, and `sha256sum -c manifest.sha256` reads it. A verifier compares the file
+with the text the manifest gives, byte for byte.
+
+### campaign.json
+
+`campaign.json` is a JSON object. The verifier reads from it `id` and `lock_digest`, strings, and
+`sources`, a list of objects with exactly `connection`, `name`, `plugin`, `seq`, `digest` and
+`chain_value`. Another member is allowed and not read. A member name repeated is refused.
+
+### Checking a pack
+
+A verifier checks, and reports each of the following that fails. The findings are named by the codes
+under [Reason codes](#reason-codes).
+
+1. **Names.** Each entry of the container has a plain name, is a plain file and is not repeated. What an operating system left in a folder is a note and not a finding.
+2. **Manifest.** As above.
+3. **Files.** Each file the manifest lists is in the pack, has the listed size and has the listed
+   digest (`missing`, `size`, `sha256`). A file in the pack that the manifest does not list is
+   `unlisted`; `sha256sum -c` cannot see that. A listed file that is a link, or another file that is not
+   plain, is named `notplain` and, since it is not read, `missing`.
+4. **The list of digests.** `manifest.sha256` is the text above (`list`, or `missing`).
+5. **The logs.** Each `history/<connection>/<plugin>.jsonl` the manifest names, and the workflow log,
+   is checked as its section says, with its anchor. The manifest must list a log for it to be
+   checked, and a log that fails is reported with its own code and its entries are not cross-referenced.
+6. **Cross-references**, below.
+
+If the manifest cannot be read as above, or the pack goes past a bound, the verifier does not go on.
+A finding about a file does not stop the others: the verifier reports all it finds, in the order
+above.
+
+### Cross-references
+
+The manifest, `campaign.json`, the logs and the workflow log all name the same things, and a pack in
+which they do not has been put together from parts that do not belong together.
+
+**Collections.** For each element of `collections`:
+
+- the log `history/<connection>/<plugin>.jsonl` has an entry numbered `seq` whose `digest` and
+  `chain` are the element's `digest` and `chain_value` (`collection`);
+- the log has `head_seq` entries, and the chain value of the last is `head_chain_value` (`head`);
+- `snapshot` is a plain path that the manifest lists, and the file is in the pack.
+
+**The workflow head.** The workflow log has `heads.workflow.seq` entries, and the chain value of the
+last is `heads.workflow.chain_value` (`head`).
+
+**campaign.json.** Its `id` and `lock_digest` are the manifest's `campaign.id` and
+`campaign.lock_digest`, and its `sources` are the manifest's `collections`, each exactly once:
+for each, `connection`, `plugin`, `seq`, `digest` and `chain_value` are equal, and neither names
+an element that the other does not (`campaign`).
+
+**The workflow log.** Two types of event are read, and only when their `data` is an object with
+the members named here; another member is allowed and not read. A `campaign.locked` or
+`collection.completed` event whose `data` cannot be read so is `event`.
+
+- `campaign.locked` has `campaign` (a string, the review's id), `digest` (the lock digest) and
+  `sources` (a list of objects with `connection`, `seq`, `digest` and `chain_value`).
+- `collection.completed` has `connection`, `seq`, `digest` and `chain_value`.
+
+The log holds exactly one `campaign.locked` event whose `campaign` is the manifest's
+`campaign.id`; its `digest` is the manifest's `campaign.lock_digest`; and its `sources` are the
+manifest's `collections`, each exactly once, by `connection`, `seq`, `digest` and `chain_value`, and
+nothing else (`locked`). For each element of `collections` the log holds a `collection.completed`
+event with that `connection`, `seq`, `digest` and `chain_value`, at an earlier position in the log
+than the lock (`completed`). And every `collection.completed` event the log holds for a
+`connection` the pack carries, for an entry numbered no more than the `head_seq` of that
+connection's collection, has the `digest` and `chain_value` of that entry in the collection log
+(`completed`): so replacing an entry of a collection log, at any point, means rewriting the workflow
+log as well. The events of other reviews, and of connections the pack does not carry, are ignored,
+and so are events for entries past `head_seq`, which the collection log had not reached when it was
+exported.
+
+The service also records, on its own trail, a `pack.built` event with the digest of each manifest it
+hands out. It is after the pack's log ends, so it is not in the pack, and a check cannot see it. The
+digest of `manifest.json` is in the report so that it can be compared with the service's record.
+
 ## Reason codes
 
 A verifier names what it found with one of these. They are stable names: a program may switch on
@@ -411,8 +588,23 @@ them, and the test vectors name them.
 
 | Code              | Meaning                                                                         |
 |-------------------|---------------------------------------------------------------------------------|
-| `name`            | The name is not one a log can have.                                             |
-| `unreadable`      | A file is missing, is not a plain file or cannot be read; or an anchor is not in the form anchors are written in. |
+| `name`            | The name is not one a log can have; or, in a pack, an entry has a name no pack has. |
+| `unreadable`      | A file is missing, is not a plain file or cannot be read; or an anchor is not in the form anchors are written in; or a pack, or its manifest, cannot be read as one. |
+| `limit`           | A pack goes past a bound on what it may expand to. The pack was not checked.    |
+| `notplain`        | An entry of a pack is a link or another file that is not a plain file.          |
+| `duplicate`       | An archive holds a name more than once.                                         |
+| `manifest`        | The manifest is not in a form this verifier reads, or does not list what a cross-reference needs. |
+| `missing`         | A file the manifest lists, or `manifest.sha256`, is not in the pack.            |
+| `size`            | A file is not the size the manifest lists.                                      |
+| `sha256`          | A file is not the digest the manifest lists.                                    |
+| `unlisted`        | A file is in the pack and the manifest does not list it.                        |
+| `list`            | `manifest.sha256` is not the list the manifest gives.                           |
+| `collection`      | An entry the manifest names is not in its collection log.                       |
+| `head`            | A log does not end where the manifest says it does.                             |
+| `campaign`        | `campaign.json` and the manifest name different facts.                          |
+| `locked`          | The workflow log does not hold the lock the manifest names.                     |
+| `completed`       | The workflow log holds a collection that is not the one the collection log has for that entry, or does not hold one the lock names. |
+| `note`            | Not a finding: something seen in a folder that an operating system left there, which is not read. |
 | `line`            | A line is not an entry in the form above.                                       |
 | `digest`          | An entry's `run` (or, in a workflow log, `body`) is not the one its `digest` is of. |
 | `sequence`        | An entry is not at the position its `sequence` says.                           |
@@ -424,7 +616,7 @@ them, and the test vectors name them.
 | `tail-cut`        | The anchor names an entry past the end of the log.                              |
 | `anchor-stale`    | The anchor names an entry before the end of the log.                            |
 | `anchor-mismatch` | The anchor and the log name different chain values for one entry.               |
-| `format`          | The anchor is in a format this verifier does not know.                          |
+| `format`          | The anchor, or a manifest, is in a format this verifier does not know.          |
 
 ## Compatibility
 

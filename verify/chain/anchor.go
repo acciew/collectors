@@ -11,9 +11,10 @@ import (
 // AnchorFormat is the one anchor format this verifier reads.
 const AnchorFormat = 1
 
-// maxAnchor is far above the size of a real anchor, and small enough that a
-// file that is not one is refused before it is parsed.
-const maxAnchor = 1 << 10
+// MaxAnchorBytes is far above the size of a real anchor, and small enough that a
+// file that is not one is refused before it is parsed. A reader of anchors need
+// not read more than this and one byte.
+const MaxAnchorBytes = 1 << 10
 
 // Anchor names the last entry of a log, kept in a second file beside it.
 // It is written as one line of JSON in exactly this field order.
@@ -31,12 +32,12 @@ type Anchor struct {
 // The format is read before anything else is judged, so an anchor from a newer
 // format is reported as one this verifier does not know and never as altered.
 func ReadAnchor(r io.Reader) (Anchor, error) {
-	raw, err := io.ReadAll(io.LimitReader(r, maxAnchor+1))
+	raw, err := io.ReadAll(io.LimitReader(r, MaxAnchorBytes+1))
 	if err != nil {
 		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor cannot be read: %s", text.Plain(err))
 	}
-	if len(raw) > maxAnchor {
-		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor is longer than an anchor of format %d may be (%d bytes)", AnchorFormat, maxAnchor)
+	if len(raw) > MaxAnchorBytes {
+		return Anchor{}, fault(ReasonUnreadable, 0, "the anchor is longer than an anchor of format %d may be (%d bytes)", AnchorFormat, MaxAnchorBytes)
 	}
 	body := bytes.TrimSuffix(raw, []byte("\n"))
 

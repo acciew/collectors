@@ -831,3 +831,34 @@ func TestWhichFaultIsNamedWhenSeveralCoexist(t *testing.T) {
 		})
 	}
 }
+
+func TestTheCallbackSeesEachEntryOnceItHasPassedEverything(t *testing.T) {
+	log, head := good(t)
+	var seen []uint64
+	opts := collection.Options{Entry: func(e collection.Entry) { seen = append(seen, e.Sequence) }}
+	if _, err := collection.VerifyWith("x", strings.NewReader(log), strings.NewReader(head), opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 3 || seen[0] != 1 || seen[2] != 3 {
+		t.Errorf("seen = %v", seen)
+	}
+
+	// Entries before the fault were seen; the entry with the fault was not.
+	seen = nil
+	ls := lines(log)
+	_, err := collection.VerifyWith("x", strings.NewReader(ls[0]+ls[1]+strings.Replace(ls[2], c2, c1, 1)), strings.NewReader(head), opts)
+	check(t, err, want{reason: "link", entry: 3})
+	if len(seen) != 2 {
+		t.Errorf("seen = %v", seen)
+	}
+}
+
+func TestTheCallbackNeverSeesAnEntryOfALogWithNoAnchor(t *testing.T) {
+	log, _ := good(t)
+	var seen int
+	_, err := collection.VerifyWith("x", strings.NewReader(log), nil, collection.Options{Entry: func(collection.Entry) { seen++ }})
+	check(t, err, want{reason: "anchor-missing"})
+	if seen != 0 {
+		t.Errorf("the callback saw %d entries of a log with no anchor", seen)
+	}
+}
