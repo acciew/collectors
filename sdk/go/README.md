@@ -4,7 +4,7 @@
 
 This document is a commitment, not an intention. Once a plugin you did not
 write is running in someone else's cluster, breaking any of the promises below
-is a trust breach rather than a release note. It is published before the first
+is a trust breach rather than a release note. It was published before the first
 tag on purpose: a compatibility policy written after third parties exist is
 written under pressure.
 
@@ -109,9 +109,3 @@ that removes the old thing.
 - A partial collection is reported as partial. The host will never present your
   incomplete result as a complete one — see requirement R5 in the
   [three-source mapping](../../docs/design/three-source-mapping.md).
-
-## Status
-
-**Pre-tag.** Nothing above is in force yet, because no version exists to be
-compatible with. It comes into force at the first tag of `sdk/go` and of
-`collector/v1`, and this section is deleted in the same commit.

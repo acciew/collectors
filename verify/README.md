@@ -50,7 +50,7 @@ The command prints the words that apply after each check, and a test fails if th
 
 ## The packages
 
-This is not released yet. The packages are:
+It is released with the collectors, from v0.2.0 (the module tag is `verify/v0.2.0`). The packages are:
 
 - [`chain`](chain): the hash chain over the entries of a log, and the anchor that names its end.
 - [`collection`](collection): the collection log: its wire types, the canonical form and digest of a collection, and a strict reader that checks a log and its anchor.

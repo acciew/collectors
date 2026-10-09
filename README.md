@@ -13,8 +13,8 @@ their own network for sources the service cannot reach. It is here for the same
 reason the collectors are: it handles credentials, and you should be able to read
 it.
 
-Four collectors are here: Keycloak, GitHub, AWS IAM and Microsoft Entra ID, the
-last of which is in no release yet. They are the first, not the set. The
+Four collectors are here: Keycloak, GitHub, AWS IAM and Microsoft Entra ID, which
+is in the releases from v0.2.0. They are the first, not the set. The
 contract and the SDK are how every other one is written, by us or by anyone, and
 `sdk/conformance` is the suite an author runs against theirs. A collector
 written by someone else lives in its own repository; see
@@ -71,9 +71,9 @@ here. [`verify/README.md`](verify/README.md) says what a pass shows and what it 
 [`docs/evidence-format.md`](docs/evidence-format.md) is the format it checks, and
 [the decision record](docs/adr/0015-evidence-verifier.md) says why it is built this way.
 
-`acciew-verify` is in each release's archive, beside the collectors and the agent, for Linux and
+`acciew-verify` is in the release archives from v0.2.0, beside the collectors and the agent, for Linux and
 macOS on amd64 and arm64. On Windows, download `acciew-verify-X.Y.Z-windows-amd64.zip` (or `-arm64`)
-from the release: it holds only `acciew-verify.exe` and the licence, notice and README files, in a
+from a release that has it (v0.2.0 does not): it holds only `acciew-verify.exe` and the licence, notice and README files, in a
 folder named like the zip. Unzip it, then run the program from that folder in a terminal:
 
 ```powershell
@@ -97,8 +97,8 @@ acciew-verify version
 ```
 
 The archive's attestation (above) is how to check that the binary in it is the one the release
-workflow built. A release that has not been cut has no archive, and the module has no tag until it
-is.
+workflow built. `verify/v0.2.0` is the module's first tag, and v0.2.0 the first archive that holds the
+verifier; v0.1.1 has neither.
 
 ## Layout
 
