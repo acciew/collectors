@@ -45,7 +45,8 @@ and what has not been verified.
   which AWS describes as an identifier and not a secret.
 - A release's archives are listed with their digests in `SHA256SUMS` and carry a
   build provenance attestation, which names the workflow run and commit that
-  built them. `acciew-collector-<name> --version` says which build you have.
+  built them. `acciew-collector-<name> --version` says which build you have; so do
+  `acciew-agent` and `acciew-verify`.
   The check needs a recent `gh`: 2.102 verified the v0.1.1 archives, 2.52 could
   not read the signing roots.
 
@@ -69,6 +70,18 @@ workflow log against one another. It is one module, standard library only, that 
 here. [`verify/README.md`](verify/README.md) says what a pass shows and what it does not,
 [`docs/evidence-format.md`](docs/evidence-format.md) is the format it checks, and
 [the decision record](docs/adr/0015-evidence-verifier.md) says why it is built this way.
+
+`acciew-verify` is in each release's archive, beside the collectors and the agent, for Linux and
+macOS on amd64 and arm64, and installs with Go as well, at the version of a release:
+
+```sh
+go install go.acciew.io/collector/verify/cmd/acciew-verify@vX.Y.Z
+acciew-verify version
+```
+
+The archive's attestation (above) is how to check that the binary in it is the one the release
+workflow built. A release that has not been cut has no archive, and the module has no tag until it
+is.
 
 ## Layout
 
@@ -98,7 +111,7 @@ Needs Go 1.26+. Docker is needed only for the Keycloak integration test.
 mkdir -p bin && GOWORK=off GOBIN="$PWD/bin" go -C tools install tool
 ./bin/task --list
 ./bin/task ci       # exactly what CI runs
-./bin/task build    # every collector, and the agent, into ./bin
+./bin/task build    # every collector, the agent and the verifier, into ./bin
 ```
 
 ## Writing your own collector

@@ -27,6 +27,10 @@ var collectors = []string{"keycloak", "github", "awsiam", "entra"}
 // (the one it sits in) holds the collectors it runs.
 const agent = "acciew-agent"
 
+// The verifier ships in it too: an auditor who downloads the archive to check a pack
+// has the command that does it. It is a module of its own, with no dependency of ours.
+const verifier = "acciew-verify"
+
 func TestArchives(t *testing.T) {
 	dist := os.Getenv("ACCIEW_DIST")
 	if dist == "" {
@@ -57,7 +61,7 @@ func TestArchives(t *testing.T) {
 			for _, c := range collectors {
 				want = append(want, "acciew-collector-"+c)
 			}
-			want = append(want, agent)
+			want = append(want, agent, verifier)
 			var got []string
 			for f := range files {
 				got = append(got, f)
@@ -68,12 +72,13 @@ func TestArchives(t *testing.T) {
 				t.Errorf("archive holds %v, want exactly %v", got, want)
 			}
 
-			type binary struct{ name, file, main, version string }
+			type binary struct{ name, file, main, module, version string }
 			var bins []binary
 			for _, c := range collectors {
-				bins = append(bins, binary{c, "acciew-collector-" + c, "go.acciew.io/collector/plugins/" + c, c + " " + version})
+				bins = append(bins, binary{c, "acciew-collector-" + c, "go.acciew.io/collector/plugins/" + c, "go.acciew.io/collector/plugins/" + c, c + " " + version})
 			}
-			bins = append(bins, binary{agent, agent, "go.acciew.io/collector/cmd/acciew-agent", agent + " " + version})
+			bins = append(bins, binary{agent, agent, "go.acciew.io/collector/cmd/acciew-agent", "go.acciew.io/collector/cmd/acciew-agent", agent + " " + version})
+			bins = append(bins, binary{verifier, verifier, "go.acciew.io/collector/verify/cmd/acciew-verify", "go.acciew.io/collector/verify", verifier + " " + version})
 			for _, b := range bins {
 				c, bin := b.name, files[b.file]
 				if bin == "" {
@@ -84,8 +89,14 @@ func TestArchives(t *testing.T) {
 					t.Errorf("%s: no build information: %v", c, err)
 					continue
 				}
-				if info.Main.Path != b.main {
-					t.Errorf("%s: built from %s, want %s", c, info.Main.Path, b.main)
+				// The package that is main, and the module it is in: for a collector they are
+				// the same path, and for the verifier the command is inside its module.
+				if info.Path != b.main || info.Main.Path != b.module {
+					t.Errorf("%s: built from package %s of module %s, want %s of %s", c, info.Path, info.Main.Path, b.main, b.module)
+				}
+				// The verifier is standard library only: nothing else is in the binary.
+				if b.name == verifier && len(info.Deps) != 0 {
+					t.Errorf("%s: built with %d dependencies, want none: %v", c, len(info.Deps), info.Deps)
 				}
 				set := map[string]string{}
 				for _, s := range info.Settings {
@@ -149,7 +160,7 @@ func unpack(t *testing.T, path, top string) map[string]string {
 			t.Errorf("unexpected entry %q outside %s/", h.Name, top)
 			continue
 		}
-		if (strings.HasPrefix(rel, "acciew-collector-") || rel == agent) && h.Mode&0o111 == 0 {
+		if (strings.HasPrefix(rel, "acciew-collector-") || rel == agent || rel == verifier) && h.Mode&0o111 == 0 {
 			t.Errorf("%s is not executable", rel)
 		}
 		dst := filepath.Join(dir, rel)

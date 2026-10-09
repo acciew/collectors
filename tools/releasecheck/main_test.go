@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -162,5 +163,138 @@ func TestBumpMovesSiblingRequiresAndBuiltInVersions(t *testing.T) {
 	}
 	if !strings.Contains(read("tools/go.mod"), "api v0.1.0") || !strings.Contains(read(".claude/copy/go.mod"), "api v0.1.0") {
 		t.Error("the bump edited tooling or a hidden folder")
+	}
+}
+
+// The verifier is a module with no sibling to require, and its command is not beside
+// its go.mod: the bump has to find the built-in version where it is.
+func TestBumpMovesTheBuiltInVersionOfACommandInsideAModule(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("go.mod", "module go.acciew.io/collector\n\ngo 1.26.0\n")
+	write("verify/go.mod", "module go.acciew.io/collector/verify\n\ngo 1.26.0\n")
+	write("verify/doc.go", "package verify\n")
+	write("verify/cmd/acciew-verify/main.go", "package main\n\nvar version = \"0.1.1-dev\"\n")
+	write("verify/internal/cli/cli.go", "package cli\n\nvar version = \"not a built-in version\"\n")
+	// A command may keep its version in another file than main.go.
+	write("verify/cmd/other/main.go", "package main\n\nfunc main() {}\n")
+	write("verify/cmd/other/version.go", "package main\n\n// stamped at build time\nvar version = \"0.1.1-dev\"\n")
+	write("verify/cmd/other/version_test.go", "package main\n\nvar version = \"0.1.1-dev\"\n")
+	// A module inside the module is a module of its own, and is bumped as one.
+	write("verify/inner/go.mod", "module go.acciew.io/collector/verify/inner\n\ngo 1.26.0\n")
+	write("verify/inner/main.go", "package main\n\nvar version = \"0.1.1-dev\"\n")
+	write("cmd/acciew-agent/go.mod", "module go.acciew.io/collector/cmd/acciew-agent\n\ngo 1.26.0\n\nrequire "+sib+"api v0.1.1\n")
+	write("cmd/acciew-agent/main.go", "package main\n\nvar version = \"0.1.1-dev\"\n")
+
+	// With no sibling to require, the verifier passes the check at any version.
+	mods, err := readModules(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mismatches(mods, "0.2.0"); !slices.Equal(got, []string{"cmd/acciew-agent/go.mod requires " + sib + "api v0.1.1, want v0.2.0"}) {
+		t.Errorf("mismatches = %q", got)
+	}
+
+	if err := bump(root, "0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	if got := read("verify/cmd/acciew-verify/main.go"); !strings.Contains(got, `var version = "0.2.0-dev"`) {
+		t.Errorf("the verifier's built-in version did not move:\n%s", got)
+	}
+	if got := read("cmd/acciew-agent/main.go"); !strings.Contains(got, `var version = "0.2.0-dev"`) {
+		t.Errorf("the agent's built-in version did not move:\n%s", got)
+	}
+	if got := read("verify/cmd/other/version.go"); !strings.Contains(got, `var version = "0.2.0-dev"`) {
+		t.Errorf("a version kept in another file of a command did not move:\n%s", got)
+	}
+	if got := read("verify/cmd/other/version_test.go"); !strings.Contains(got, `"0.1.1-dev"`) {
+		t.Errorf("the bump rewrote a test file:\n%s", got)
+	}
+	if got := read("verify/inner/main.go"); !strings.Contains(got, `var version = "0.2.0-dev"`) {
+		t.Errorf("a module inside a module was not bumped as a module of its own:\n%s", got)
+	}
+	if got := read("verify/internal/cli/cli.go"); !strings.Contains(got, "not a built-in version") {
+		t.Errorf("the bump rewrote a file that is not a command's:\n%s", got)
+	}
+	if got := read("verify/go.mod"); strings.Contains(got, "require") {
+		t.Errorf("the verifier gained a require:\n%s", got)
+	}
+	mods, err = readModules(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mismatches(mods, "0.2.0"); len(got) != 0 {
+		t.Errorf("still mismatched: %q", got)
+	}
+}
+
+// A binary added later whose built-in version the bump does not find would report the
+// last release's number for ever. Every file in this repository that holds one is
+// found.
+func TestEveryBuiltInVersionInThisRepositoryIsFoundByTheBump(t *testing.T) {
+	root := filepath.Join("..", "..")
+	if _, err := os.Stat(filepath.Join(root, "go.work")); err != nil {
+		t.Skip("not run inside the repository")
+	}
+	mods, err := readModules(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for name := range mods {
+		for _, f := range builtInVersionFiles(filepath.Join(root, filepath.Dir(name))) {
+			found[filepath.Clean(f)] = true
+		}
+	}
+	var holders []string
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "tools" || d.Name() == "bin" || d.Name() == "dist" || d.Name() == "testdata" || (path != root && strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if builtInVersion.Match(src) && packageMain.Match(src) {
+			holders = append(holders, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The collectors, the agent and the verifier, at least.
+	if len(holders) < 6 {
+		t.Fatalf("found only %v", holders)
+	}
+	for _, h := range holders {
+		if !found[filepath.Clean(h)] {
+			t.Errorf("%s holds a built-in version that the bump does not find", h)
+		}
 	}
 }

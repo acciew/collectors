@@ -9,6 +9,7 @@ updates:
       - "/sdk/go"
       - "/sdk/conformance"
       - "/sdk/examples/minimal"
+      - "/verify"
       - "/plugins/keycloak"
       - "/plugins/keycloak/integration"
       - "/plugins/github"

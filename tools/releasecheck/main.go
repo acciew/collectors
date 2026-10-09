@@ -7,7 +7,7 @@
 //	releasecheck -bump -version 0.1.1 [-root dir]
 //
 // With -bump it moves every sibling require to the version instead, and the
-// plugins' built-in version (what an unstamped build reports) to "<version>-dev".
+// built-in version of each binary (what an unstamped build reports) to "<version>-dev".
 //
 // Consumers ignore the replace directives that make the modules resolve to
 // each other's directories here. What they get is what the go.mod files say, so
@@ -129,18 +129,56 @@ func bump(root, version string) error {
 				return fmt.Errorf("go mod edit in %s: %w: %s", filepath.Dir(name), err, strings.TrimSpace(string(out)))
 			}
 		}
-		main := filepath.Join(dir, "main.go")
-		src, err := os.ReadFile(main) //nolint:gosec // beside a go.mod found under the root
-		if err != nil {
-			continue
-		}
-		if next := builtInVersion.ReplaceAll(src, []byte(`var version = "`+version+`-dev"`)); !slices.Equal(next, src) {
-			if err := os.WriteFile(main, next, 0o644); err != nil { //nolint:gosec // a source file
-				return err
+		for _, main := range builtInVersionFiles(dir) {
+			src, err := os.ReadFile(main) //nolint:gosec // in a module found under the root
+			if err != nil {
+				continue
+			}
+			if next := builtInVersion.ReplaceAll(src, []byte(`var version = "`+version+`-dev"`)); !slices.Equal(next, src) {
+				if err := os.WriteFile(main, next, 0o644); err != nil { //nolint:gosec // a source file
+					return err
+				}
 			}
 		}
 	}
 	return nil
+}
+
+// packageMain says a file is in a package main.
+var packageMain = regexp.MustCompile(`(?m)^package main\b`)
+
+// builtInVersionFiles are the files of a module that can hold a binary's built-in
+// version: the files of its commands, wherever the commands are (beside its go.mod, or
+// in its cmd folder, as the verifier's is) and whatever the file is called. It does not
+// look in tests, in a module inside the module (which is bumped as a module of its
+// own), or in build output.
+func builtInVersionFiles(moduleDir string) []string {
+	var files []string
+	_ = filepath.WalkDir(moduleDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch {
+			case path == moduleDir:
+			case d.Name() == "bin" || d.Name() == "dist" || d.Name() == "testdata" || d.Name() == "vendor" || strings.HasPrefix(d.Name(), "."):
+				return filepath.SkipDir
+			default:
+				if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".go") || strings.HasSuffix(d.Name(), "_test.go") {
+			return nil
+		}
+		if src, err := os.ReadFile(path); err == nil && packageMain.Match(src) { //nolint:gosec // a file found under a module
+			files = append(files, path)
+		}
+		return nil
+	})
+	return files
 }
 
 func main() {

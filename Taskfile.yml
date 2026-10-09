@@ -114,7 +114,7 @@ tasks:
       - go tool cover -html={{.COVER_DIR}}/coverage.out
 
   build:
-    desc: Build every collector, the reference collector and the agent into ./bin
+    desc: Build every collector, the reference collector, the agent and the verifier into ./bin
     cmds:
       - mkdir -p {{.BIN}}
       - |
@@ -124,9 +124,12 @@ tasks:
         done
       - go build -C {{.ROOT_DIR}}/sdk/examples/minimal -o {{.BIN}}/acciew-collector-minimal .
       - go build -C {{.ROOT_DIR}}/cmd/acciew-agent -o {{.BIN}}/acciew-agent .
+      # The verifier is a module of its own, standard library only, and its command is
+      # inside it, so it is built from the module's directory.
+      - go build -C {{.ROOT_DIR}}/verify -o {{.BIN}}/acciew-verify ./cmd/acciew-verify
 
   release:bump:
-    desc: Point every module's requires of its siblings, and the plugins' built-in version, at VERSION (VERSION=0.1.2)
+    desc: Point every module's requires of its siblings at VERSION, and the built-in versions of the plugins, the agent and the verifier (VERSION=0.1.2)
     requires:
       vars: [VERSION]
     env:
@@ -179,6 +182,8 @@ tasks:
           # The agent sits beside the collectors it runs: its collectors directory
           # defaults to the one it is in.
           go build -C "{{.ROOT_DIR}}/cmd/acciew-agent" -trimpath -ldflags "$flags" -o "$out/acciew-agent" .
+          # The verifier, for whoever is handed an evidence pack and wants to check it.
+          go build -C "{{.ROOT_DIR}}/verify" -trimpath -ldflags "$flags" -o "$out/acciew-verify" ./cmd/acciew-verify
           cp {{.ROOT_DIR}}/LICENSE {{.ROOT_DIR}}/NOTICE {{.ROOT_DIR}}/README.md "$out/"
           # Without this, macOS tar adds a ._ metadata file beside every entry.
           COPYFILE_DISABLE=1 tar -C "{{.DIST}}" -czf "$out.tar.gz" "$name"

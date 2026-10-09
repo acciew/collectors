@@ -2,8 +2,11 @@ name: release
 
 # Cut by hand from main. This builds and checks the archives and leaves them
 # on a draft release; publishing the draft is what creates the tag, so nothing
-# is public until a person decides it is. The module tags (api/v0.1.0 and the
-# rest) are made separately, at the same commit: see CONTRIBUTING.md.
+# is public until a person decides it is. The module tags (api/vX.Y.Z, verify/vX.Y.Z
+# and the rest) are made separately, at the same commit: see CONTRIBUTING.md.
+#
+# Actions are pinned by commit, with the version they were at in a comment, so that
+# what runs with these tokens is what was read. Dependabot keeps the pins current.
 #
 # Two jobs, so that nothing which runs this repository's code, or its
 # dependencies', holds a token that can write a release or sign an attestation.
@@ -30,7 +33,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -56,7 +59,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
           # What main's CI cached is not what a release is built from.
@@ -89,7 +92,7 @@ jobs:
         id: sums
         run: echo "sums=$(base64 -w0 dist/SHA256SUMS)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
           path: dist/
@@ -108,10 +111,8 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       SUMS: ${{ needs.build.outputs.sums }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: dist
           path: dist
@@ -131,6 +132,10 @@ jobs:
       # Before anything is signed, so a refused run leaves no record behind. The
       # list is taken first: in an `if` a failing gh would read as "no draft".
       - name: Not already a release or a draft
+        # The token is in the environment of the two steps that use gh, and of no action.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           tags=$(gh release list --limit 200 --json tagName --jq '.[].tagName')
@@ -140,11 +145,14 @@ jobs:
           fi
 
       - name: Record how the archives were built
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.tar.gz
 
       - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           # A version with a hyphen is a pre-release and must not become "Latest".
