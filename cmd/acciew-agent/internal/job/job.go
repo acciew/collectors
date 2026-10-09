@@ -6,6 +6,8 @@ package job
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -313,7 +315,7 @@ func (r *Runner) Run(ctx context.Context, j *client.Job) Result {
 
 	uploaded := make(chan error, 1)
 	wg.Go(func() {
-		err := r.upload(jobCtx, spl, j, st, stopCollector, log)
+		err := r.upload(jobCtx, spl, j, p.self, st, stopCollector, log)
 		if err != nil {
 			cancel(err)
 		}
@@ -528,6 +530,8 @@ type prepared struct {
 	bound  *secrets.Bound
 	req    *collectorv1.CollectRequest
 	name   string
+	// self is what the agent says, on each chunk, of the file it ran.
+	self client.Collector
 }
 
 func (p *prepared) close() {
@@ -577,12 +581,21 @@ func (r *Runner) prepare(ctx context.Context, j *client.Job, log *slog.Logger) (
 	if err := policy.WatchPassed(redact, r.PassEnv); err != nil {
 		return p, redact, giveUpf("%v", err)
 	}
+	// Hashed as late as it can be, so the digest is of the file that is about to be started; the
+	// agent still cannot know that nobody swapped it in between, and only says what it read.
+	sum, derr := fileDigest(path)
+	if derr != nil {
+		log.Warn("the agent could not read the collector to take its digest; the service is told nothing of the file",
+			"collector", j.Collector, "error", redact.Line(derr.Error()))
+	}
+	p.self.SHA256 = sum
 	if p.plugin, err = host.Launch(ctx, path, host.Options{
 		Env: host.ChildEnv(r.PassEnv, r.Secrets.LookupEnv), Dir: r.CollectorsDir, Log: log, Scrub: redact.Line,
 	}); err != nil {
 		log.Warn("the collector could not be started", "collector", j.Collector, "error", redact.Line(err.Error()))
 		return p, redact, giveUpf("the collector %q could not be started (the agent's log has the detail)", j.Collector)
 	}
+	p.self.Version = p.plugin.Version
 
 	vctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
@@ -614,6 +627,20 @@ func (r *Runner) prepare(ctx context.Context, j *client.Job, log *slog.Logger) (
 		log.Info("resuming from the cursor of an earlier attempt", "bytes", len(resume))
 	}
 	return p, redact, nil
+}
+
+// fileDigest is the hex SHA-256 of a file's bytes, or "" and why not.
+func fileDigest(path string) (string, error) {
+	f, err := os.Open(path) //nolint:gosec // the collectors directory and a name checked against collectorName
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func truncate(s string, n int) string {
@@ -772,7 +799,7 @@ func violation(name string, v collectorv1.Violation) *giveUp {
 // ends the stream early, with a last chunk that carries nothing, when the next chunk would take
 // the stream past what the service allows, or when the service refuses one as too large: the
 // events after the last checkpoint sent are the next attempt's to send.
-func (r *Runner) upload(ctx context.Context, spl *spool.Spool, j *client.Job, st *shared, stopCollector context.CancelCauseFunc, log *slog.Logger) error {
+func (r *Runner) upload(ctx context.Context, spl *spool.Spool, j *client.Job, self client.Collector, st *shared, stopCollector context.CancelCauseFunc, log *slog.Logger) error {
 	// The service names the size; one too small to hold an ordinary event would give every job up.
 	limit := chunk.Limit(j.ChunkBytes)
 	n, sent, events, inflated := 0, int64(0), 0, int64(0)
@@ -820,14 +847,14 @@ func (r *Runner) upload(ctx context.Context, spl *spool.Spool, j *client.Job, st
 				full = n >= r.streamChunks() || sent+int64(len(c)) > r.streamBytes()+completionSlack
 			}
 			if full {
-				return r.endEarly(ctx, j, n, resumable(), "the stream has all the chunks or bytes the service allows", st, stopCollector, log)
+				return r.endEarly(ctx, j, self, n, resumable(), "the stream has all the chunks or bytes the service allows", st, stopCollector, log)
 			}
 			if last {
 				st.finalSent.Store(true)
 			}
-			res, err := r.putChunk(ctx, j, n, c, last, log)
+			res, err := r.putChunk(ctx, j, self, n, c, last, log)
 			if errors.Is(err, errTooLarge) {
-				return r.endEarly(ctx, j, n, resumable(), fmt.Sprintf("the service refused chunk %d as over its limits", n), st, stopCollector, log)
+				return r.endEarly(ctx, j, self, n, resumable(), fmt.Sprintf("the service refused chunk %d as over its limits", n), st, stopCollector, log)
 			}
 			if err != nil {
 				return err
@@ -853,7 +880,7 @@ func (r *Runner) upload(ctx context.Context, spl *spool.Spool, j *client.Job, st
 // endEarly stops the collector and ends the stream with a last chunk that holds nothing, as chunk
 // n. What the stream already holds is kept by the service to its last checkpoint. With none up
 // there is nothing to resume from and a second attempt would stop where this one did.
-func (r *Runner) endEarly(ctx context.Context, j *client.Job, n int, resumable bool, why string, st *shared, stopCollector context.CancelCauseFunc, log *slog.Logger) error {
+func (r *Runner) endEarly(ctx context.Context, j *client.Job, self client.Collector, n int, resumable bool, why string, st *shared, stopCollector context.CancelCauseFunc, log *slog.Logger) error {
 	if !resumable {
 		return giveUpf("%s, and the collector has offered no checkpoint that was sent to resume from", why)
 	}
@@ -864,7 +891,7 @@ func (r *Runner) endEarly(ctx context.Context, j *client.Job, n int, resumable b
 		return err
 	}
 	st.finalSent.Store(true)
-	if _, err := r.putChunk(ctx, j, n, empty[0], true, log); err != nil {
+	if _, err := r.putChunk(ctx, j, self, n, empty[0], true, log); err != nil {
 		if errors.Is(err, errTooLarge) {
 			return giveUpf("%s, and the service refused even the chunk that ends the stream", why)
 		}
@@ -889,14 +916,14 @@ const maxUnprocessable = 3
 
 // putChunk sends one chunk until the service has it. An answer that is lost is not a reason
 // to send different bytes: the same chunk goes again and the service says "duplicate".
-func (r *Runner) putChunk(ctx context.Context, j *client.Job, n int, body []byte, final bool, log *slog.Logger) (client.ChunkResult, error) {
+func (r *Runner) putChunk(ctx context.Context, j *client.Job, self client.Collector, n int, body []byte, final bool, log *slog.Logger) (client.ChunkResult, error) {
 	start := time.Now()
 	unprocessable := 0
 	var throttled time.Duration
 	for attempt := 0; ; attempt++ {
 		var res client.ChunkResult
 		err := r.Session.Do(ctx, func(tok string) (err error) {
-			res, err = r.Client.PutChunk(ctx, tok, j.Stream, n, body, final)
+			res, err = r.Client.PutChunk(ctx, tok, j.Stream, n, body, final, self)
 			return err
 		})
 		if err == nil {

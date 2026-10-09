@@ -93,6 +93,12 @@ protobuf (no frame is cut across two chunks; a frame is at most 4 MiB, a chunk a
 Chunks are numbered from 0 and go up in order and once; a stream has at most 1024 chunks, and a collection (the streams of a run, each to its checkpoint) at most 1,000,000 events and 2 GiB inflated: a source with more is refused until the limit is configurable, and an agent that sees it would pass the limit gives the job up (`/abort`) and says so, instead of sending what the service must then refuse. Headers: `X-Acciew-Sha256: <hex of the body>` (checked when given: `422` and
 nothing stored when it is not the body's), and `X-Acciew-Final: true` on the last chunk, which carries the `Completion`.
 
+The agent also says which collector file it ran, on every chunk: `X-Acciew-Collector-Sha256: <SHA-256 of the collector's file as 64 lower-case hex characters, read just
+before the agent started it>` and `X-Acciew-Collector-Version: <the version the collector gave in its handshake>` (1 to 64 characters of
+`0-9A-Za-z._+~-`). Each is optional: an agent that predates them sends neither, a file the agent could not read has no digest, and a version
+that cannot go in a header is left out. A service that does not know them ignores them, and one that does reads a chunk without them as it
+always did. They are the agent's word, and the protocol gives the service nothing to check them against.
+
 - `201` `{"status": "stored"}`; `200` `{"status": "duplicate"}` for a chunk that arrived before, the same, so an upload whose answer was
   lost is sent again.
 - `409` with a `code`: `out_of_order` (with `next`, the number wanted), `chunk_conflict` (that number arrived before with other bytes:

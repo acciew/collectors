@@ -114,6 +114,11 @@ func (r *rig) run(t *testing.T, j fakeservice.Job) (job.Result, *fakeservice.Run
 	return r.runner.Run(ctx, offered), run
 }
 
+// collectorFile is the file the agent runs for a collector.
+func (r *rig) collectorFile(name string) string {
+	return filepath.Join(r.runner.CollectorsDir, "acciew-collector-"+name)
+}
+
 func ok(records int) fakeservice.Job {
 	return fakeservice.Job{Collector: "testcollector", Config: `{"mode":"ok","records":` + strconv.Itoa(records) + `}`}
 }

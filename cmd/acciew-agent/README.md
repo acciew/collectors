@@ -150,7 +150,8 @@ pending key. Rotate after a key may have been seen.
 - At enrolment: the token, a name, its version and the protocol version, and the **public** key.
 - To get a token: a signed assertion (id, audience, times, a random id). No secret.
 - To report: heartbeats; chunks of events (a gzip of length-prefixed contract messages, each with
-  its SHA-256); and, when it cannot do a job, one sentence of reason.
+  its SHA-256); with each chunk, which collector file it ran (that file's SHA-256, and the version
+  the collector gave when it started); and, when it cannot do a job, one sentence of reason.
 
 A reason is written in the agent's own words: what a collector wrote in a sentence is never copied
 into it, only the collector's name, a field, a code or a contract rule, and the status the transport
@@ -306,7 +307,11 @@ during a rotation), `lock`, and `spool/` (a job's events while they wait; empty 
   collectors as child processes. The first run against the service may find a difference.
 - **A job with a budget is given up**, not run: the protocol does not say what one looks like (the
   service sends `null`). A resume cursor is honoured.
-- **It does not report the collector binary's digest** to the service: the protocol has no field.
+- **What it says of the collector file is its word.** It hashes the file just before starting it and
+  sends the digest and the collector's version on every chunk (`X-Acciew-Collector-Sha256` and
+  `X-Acciew-Collector-Version`). A service that keeps it can compare the digest with the published
+  release, but cannot check that it was that file that ran, and the agent cannot know that nobody replaced the file
+  between its read and the start. A file it cannot read goes without a digest, with a line in its log.
 - No Windows build. No mTLS: the agent authenticates with its key, which survives the
   TLS-inspecting proxies that client certificates do not.
 - The agent trusts the files in `--collectors-dir`; whoever can write there can run code as the

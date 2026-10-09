@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -389,12 +390,33 @@ type ChunkResult struct {
 	EndedEarly bool
 }
 
-// PutChunk sends chunk n of a stream with its digest.
-func (c *Client) PutChunk(ctx context.Context, token, stream string, n int, body []byte, final bool) (ChunkResult, error) {
+// Collector is what the agent says of the collector file it ran, on every chunk it sends. The
+// service has only its word for it. A value that is empty, or that cannot go in a header as it is,
+// is left out: the chunk is worth more than the label.
+type Collector struct {
+	// SHA256 is the hex SHA-256 of the file, read just before the agent started it.
+	SHA256 string
+	// Version is what the collector called itself when it started.
+	Version string
+}
+
+var (
+	collectorSHA256  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	collectorVersion = regexp.MustCompile(`^[0-9A-Za-z._+~-]{1,64}$`)
+)
+
+// PutChunk sends chunk n of a stream with its digest, and what the agent says of the collector.
+func (c *Client) PutChunk(ctx context.Context, token, stream string, n int, body []byte, final bool, col Collector) (ChunkResult, error) {
 	sum := sha256.Sum256(body)
 	header := http.Header{"Content-Type": {"application/octet-stream"}, "X-Acciew-Sha256": {hex.EncodeToString(sum[:])}}
 	if final {
 		header.Set("X-Acciew-Final", "true")
+	}
+	if collectorSHA256.MatchString(col.SHA256) {
+		header.Set("X-Acciew-Collector-Sha256", col.SHA256)
+	}
+	if collectorVersion.MatchString(col.Version) {
+		header.Set("X-Acciew-Collector-Version", col.Version)
 	}
 	var out struct {
 		Status     string `json:"status"`

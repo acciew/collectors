@@ -3,6 +3,7 @@ package job_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -25,6 +26,7 @@ import (
 	"go.acciew.io/collector/cmd/acciew-agent/internal/fakeservice"
 	"go.acciew.io/collector/cmd/acciew-agent/internal/job"
 	"go.acciew.io/collector/cmd/acciew-agent/internal/secrets"
+	"go.acciew.io/collector/cmd/acciew-agent/internal/testbin"
 )
 
 func TestAWholeCollectionIsUploadedAndEndsWithItsCompletion(t *testing.T) {
@@ -83,6 +85,101 @@ func TestALargeCollectionGoesUpAsManyChunksInOrderAndTheLastIsFinal(t *testing.T
 	}
 	if identities != 40 {
 		t.Errorf("%d identities arrived in the chunks, want 40", identities)
+	}
+}
+
+// The agent hashes the collector's file just before it starts it, and says so on every chunk with
+// the version the collector gave in its handshake: the service has nothing else to go by.
+func TestEveryChunkSaysWhichCollectorFileWasRunAndWhatItCalledItself(t *testing.T) {
+	r := newRig(t, func(c *job.Config) { c.RawTarget = 64 << 10 })
+	res, run := r.run(t, fakeservice.Job{Collector: "testcollector", Config: `{"mode":"ok","records":40,"payload":20000}`})
+	if res.Outcome != job.Uploaded {
+		t.Fatalf("outcome %v: %s", res.Outcome, res.Reason)
+	}
+	want := fakeservice.Report{SHA256: fileDigest(t, r.collectorFile("testcollector")), Version: "0.0.1"}
+	reports := run.Reports()
+	if run.Chunks() < 5 || len(reports) != run.Chunks() {
+		t.Fatalf("%d chunks stored and %d reports", run.Chunks(), len(reports))
+	}
+	for n, got := range reports {
+		if got != want {
+			t.Errorf("chunk %d said %+v, want %+v", n, got, want)
+		}
+	}
+}
+
+// The file is read for each job, so a collector that was replaced between two is the one reported.
+func TestTheDigestIsOfTheFileThatWasStartedForThisJobAndNotOfAnotherCollector(t *testing.T) {
+	r := newRig(t, nil)
+	_, first := r.run(t, ok(2))
+	_, second := r.run(t, fakeservice.Job{Collector: "minimal"})
+	a, b := first.Reports(), second.Reports()
+	if len(a) == 0 || len(b) == 0 {
+		t.Fatalf("%d and %d reports", len(a), len(b))
+	}
+	if a[0].SHA256 != fileDigest(t, r.collectorFile("testcollector")) || b[0].SHA256 != fileDigest(t, r.collectorFile("minimal")) {
+		t.Errorf("digests %q and %q are not those of the two files", a[0].SHA256, b[0].SHA256)
+	}
+	if a[0].SHA256 == b[0].SHA256 {
+		t.Error("two different collectors were reported as the same file")
+	}
+}
+
+// The chunk that ends a stream early is a chunk like the others, and so is every one of the stream
+// that picks the job up again.
+func TestTheChunkThatEndsAStreamEarlyAndTheStreamThatResumesSayWhichFileRanToo(t *testing.T) {
+	r := newRig(t, func(c *job.Config) {
+		c.RawTarget = 48 << 10
+		c.StreamChunks = 3
+	})
+	res, run := r.run(t, fakeservice.Job{Collector: "testcollector", Config: `{"mode":"ok","records":14,"payload":20000,"checkpoint_every":2}`})
+	if res.Outcome != job.Uploaded || !res.EndedEarly {
+		t.Fatalf("outcome %v, ended early %v: %s", res.Outcome, res.EndedEarly, res.Reason)
+	}
+	r.finish(t, run)
+	want := fakeservice.Report{SHA256: fileDigest(t, r.collectorFile("testcollector")), Version: "0.0.1"}
+	if run.Attempts() < 2 {
+		t.Fatalf("%d attempts", run.Attempts())
+	}
+	for i := range run.Attempts() {
+		reports := run.StreamReports(i)
+		if len(reports) == 0 {
+			t.Errorf("stream %d has no chunks", i)
+		}
+		for n, got := range reports {
+			if got != want {
+				t.Errorf("stream %d chunk %d said %+v, want %+v", i, n, got, want)
+			}
+		}
+	}
+}
+
+// A file the agent can run and cannot read has no digest to give. The job goes on, and the service is
+// told nothing of the file: it is not told something untrue, and a label is not worth a collection.
+func TestACollectorTheAgentCanRunButNotReadIsRunAndReportedWithoutADigest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	dir := t.TempDir()
+	src, err := os.ReadFile(filepath.Join(testbin.Collectors(t), "acciew-collector-testcollector"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "acciew-collector-testcollector"), src, 0o111); err != nil {
+		t.Fatal(err)
+	}
+	r := newRig(t, func(c *job.Config) { c.CollectorsDir = dir })
+	res, run := r.run(t, ok(3))
+	if res.Outcome != job.Uploaded {
+		t.Fatalf("outcome %v: %s", res.Outcome, res.Reason)
+	}
+	for n, got := range run.Reports() {
+		if got.SHA256 != "" || got.Version != "0.0.1" {
+			t.Errorf("chunk %d said %+v, want a version and no digest", n, got)
+		}
+	}
+	if !strings.Contains(r.logs.String(), "could not read the collector") {
+		t.Errorf("the agent's log does not say the file could not be read:\n%s", r.logs)
 	}
 }
 
@@ -1854,4 +1951,14 @@ func TestTheAccountAfterAStreamThatRejectedItsCursorIsThatStreamsAlone(t *testin
 	if got := r.runner.Spent(run.ID()); got < 40<<10 || got > first+10<<10 {
 		t.Errorf("spent = %d after two streams of about %d each, the second of which stood alone", got, first)
 	}
+}
+
+func fileDigest(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }

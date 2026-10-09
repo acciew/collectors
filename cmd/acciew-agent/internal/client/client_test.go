@@ -190,6 +190,62 @@ func TestACursorThatIsNotOneIsAnErrorAndNeverAFreshStart(t *testing.T) {
 	}
 }
 
+// The agent says which file it ran, on every chunk. The service has only its word for it.
+func TestEveryChunkSaysWhichCollectorFileTheAgentRanAndWhatItCalledItself(t *testing.T) {
+	r := enrolled(t)
+	tok := r.token(t)
+	run := r.svc.Queue(fakeservice.Job{Collector: "minimal"})
+	job, _ := r.c.Jobs(context.Background(), tok)
+	col := client.Collector{SHA256: strings.Repeat("ab", 32), Version: "0.2.0-rc.1+b5"}
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a")), false, col); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 1, chunkOf(t, diagnostic("b"), completion()), true, col); err != nil {
+		t.Fatal(err)
+	}
+	want := fakeservice.Report{SHA256: col.SHA256, Version: col.Version}
+	if got := run.Reports(); len(got) != 2 || got[0] != want || got[1] != want {
+		t.Errorf("the service was told %+v, want %+v twice", got, want)
+	}
+}
+
+// A value that is not what it should be is left out, and the chunk still goes: the agent does not
+// fail an upload over a label, and does not let a collector put a line of its own in a header.
+func TestWhatTheAgentDoesNotKnowOfTheCollectorOrCannotSendIsLeftOutAndTheChunkStillGoes(t *testing.T) {
+	good := strings.Repeat("0f", 32)
+	for name, c := range map[string]struct {
+		col  client.Collector
+		want fakeservice.Report
+	}{
+		"nothing known":              {client.Collector{}, fakeservice.Report{}},
+		"a digest and no version":    {client.Collector{SHA256: good}, fakeservice.Report{SHA256: good}},
+		"a version and no digest":    {client.Collector{Version: "0.2.0"}, fakeservice.Report{Version: "0.2.0"}},
+		"a line break in version":    {client.Collector{SHA256: good, Version: "0.2.0\r\nX-Acciew-Final: true"}, fakeservice.Report{SHA256: good}},
+		"a space in version":         {client.Collector{SHA256: good, Version: "0.2.0 beta"}, fakeservice.Report{SHA256: good}},
+		"a version past 64 bytes":    {client.Collector{SHA256: good, Version: strings.Repeat("1", 65)}, fakeservice.Report{SHA256: good}},
+		"a version of 64 bytes":      {client.Collector{SHA256: good, Version: strings.Repeat("1", 64)}, fakeservice.Report{SHA256: good, Version: strings.Repeat("1", 64)}},
+		"a non-ASCII version":        {client.Collector{SHA256: good, Version: "0.2.0\u00e9"}, fakeservice.Report{SHA256: good}},
+		"a digest in capitals":       {client.Collector{SHA256: strings.ToUpper(good), Version: "0.2.0"}, fakeservice.Report{Version: "0.2.0"}},
+		"a digest that is too short": {client.Collector{SHA256: good[:62], Version: "0.2.0"}, fakeservice.Report{Version: "0.2.0"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := enrolled(t)
+			tok := r.token(t)
+			run := r.svc.Queue(fakeservice.Job{Collector: "minimal"})
+			job, _ := r.c.Jobs(context.Background(), tok)
+			if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a")), false, c.col); err != nil {
+				t.Fatalf("the chunk did not go: %v", err)
+			}
+			if got := run.Reports(); len(got) != 1 || got[0] != c.want {
+				t.Errorf("the service was told %+v, want %+v", got, c.want)
+			}
+			if run.Final() {
+				t.Error("a header the collector wrote ended the stream")
+			}
+		})
+	}
+}
+
 func TestABudgetInAJobIsNoticed(t *testing.T) {
 	j := client.Job{Budget: json.RawMessage(`{"max_records": 5}`)}
 	if j.NoBudget() {
@@ -203,26 +259,26 @@ func TestChunksAreStoredOnceAndSentAgainAsDuplicates(t *testing.T) {
 	r.svc.Queue(fakeservice.Job{Collector: "minimal"})
 	job, _ := r.c.Jobs(context.Background(), tok)
 	body := chunkOf(t, diagnostic("one"))
-	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, body, false)
+	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, body, false, client.Collector{})
 	if err != nil || got.Duplicate {
 		t.Fatalf("first: %+v, err %v", got, err)
 	}
-	got, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, body, false)
+	got, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, body, false, client.Collector{})
 	if err != nil || !got.Duplicate {
 		t.Fatalf("again: %+v, err %v", got, err)
 	}
-	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 2, body, false)
+	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 2, body, false, client.Collector{})
 	if e := apiError(t, err); e.Code != "out_of_order" || !e.HasNext || e.Next != 1 {
 		t.Errorf("a gap: %+v", e)
 	}
-	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("other")), false)
+	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("other")), false, client.Collector{})
 	if e := apiError(t, err); e.Code != "chunk_conflict" {
 		t.Errorf("other bytes under an old number: %+v", e)
 	}
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 1, body, true); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 1, body, true, client.Collector{}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 2, body, false)
+	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 2, body, false, client.Collector{})
 	if e := apiError(t, err); e.Code != "stream_closed" {
 		t.Errorf("after the last: %+v", e)
 	}
@@ -325,12 +381,12 @@ func TestANetworkThatLosesTheAnswerIsNotAnAPIError(t *testing.T) {
 	job, _ := r.c.Jobs(context.Background(), tok)
 	r.svc.DropAnswers(fakeservice.Chunk(0), 1)
 	x := chunkOf(t, diagnostic("x"))
-	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, x, false)
+	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, x, false, client.Collector{})
 	var e *client.APIError
 	if err == nil || errors.As(err, &e) || !client.Transient(err) {
 		t.Fatalf("err = %v", err)
 	}
-	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, x, false)
+	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, x, false, client.Collector{})
 	if err != nil || !got.Duplicate {
 		t.Errorf("after the lost answer the same chunk should be a duplicate: %+v %v", got, err)
 	}
@@ -434,7 +490,7 @@ func TestAChunkThatIsNotWellFormedIsRefusedWithAReason(t *testing.T) {
 		"an event after the completion": {chunkOf(t, completion(), diagnostic("late")), true, "follows the completion"},
 		"a completion that is not last": {chunkOf(t, completion()), false, "last chunk"},
 	} {
-		_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, c.body, c.final)
+		_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, c.body, c.final, client.Collector{})
 		e := apiError(t, err)
 		if e.Status != http.StatusUnprocessableEntity || !strings.Contains(e.Detail, c.want) {
 			t.Errorf("%s: %+v", name, e)
@@ -444,7 +500,7 @@ func TestAChunkThatIsNotWellFormedIsRefusedWithAReason(t *testing.T) {
 		t.Fatalf("%d PUTs", got)
 	}
 	// Nothing was kept: chunk 0 is still wanted.
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("ok")), false); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("ok")), false, client.Collector{}); err != nil {
 		t.Errorf("chunk 0 after the refusals: %v", err)
 	}
 }
@@ -454,7 +510,7 @@ func TestALastChunkWithNoCompletionEndsTheStreamEarlyAndOffersTheJobAgainResumed
 	tok := r.token(t)
 	run := r.svc.Queue(fakeservice.Job{Collector: "minimal"})
 	job, _ := r.c.Jobs(context.Background(), tok)
-	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("3"), diagnostic("b")), true)
+	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("3"), diagnostic("b")), true, client.Collector{})
 	if err != nil || !got.EndedEarly || got.Duplicate {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -472,11 +528,11 @@ func TestALastChunkWithNoCompletionEndsTheStreamEarlyAndOffersTheJobAgainResumed
 		t.Errorf("second offer: stream %q (was %q), attempt %d, cursor %q (%v)", again.Stream, job.Stream, again.Attempt, cur, cerr)
 	}
 	// The earlier stream's lease is gone; the answer to a chunk resent from it is still "duplicate".
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("3"), diagnostic("b")), true); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("3"), diagnostic("b")), true, client.Collector{}); err != nil {
 		t.Errorf("a lost answer from the first attempt: %v", err)
 	}
 	// A whole last chunk is not early.
-	got, err = r.c.PutChunk(context.Background(), tok, again.Stream, 0, chunkOf(t, diagnostic("c"), completion()), true)
+	got, err = r.c.PutChunk(context.Background(), tok, again.Stream, 0, chunkOf(t, diagnostic("c"), completion()), true, client.Collector{})
 	if err != nil || got.EndedEarly {
 		t.Errorf("%+v %v", got, err)
 	}
@@ -498,16 +554,16 @@ func TestAnEightMegabyteChunkRefusedBeforeItsBodyIsReadComesBackAsTheRefusal(t *
 	big := make([]byte, 8<<20)
 	_, _ = rand.Read(big)
 
-	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 3, big, false)
+	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 3, big, false, client.Collector{})
 	if e := apiError(t, err); e.Code != "out_of_order" || !e.HasNext || e.Next != 0 {
 		t.Errorf("a number that is not the next: %v", err)
 	}
-	_, err = r.c.PutChunk(context.Background(), tok, "not-a-stream", 0, big, false)
+	_, err = r.c.PutChunk(context.Background(), tok, "not-a-stream", 0, big, false, client.Collector{})
 	if e := apiError(t, err); e.Status != http.StatusNotFound {
 		t.Errorf("a stream that is not this agent's: %v", err)
 	}
 	run.LoseLease()
-	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, big, false)
+	_, err = r.c.PutChunk(context.Background(), tok, job.Stream, 0, big, false, client.Collector{})
 	if e := apiError(t, err); e.Code != "lease_lost" {
 		t.Errorf("a lease that was lost: %v", err)
 	}
@@ -520,16 +576,16 @@ func TestAChunkNumberThatArrivedBeforeIsAnsweredFromItsDigest(t *testing.T) {
 	r.svc.Queue(fakeservice.Job{Collector: "minimal"})
 	job, _ := r.c.Jobs(context.Background(), tok)
 	first := chunkOf(t, diagnostic("first"))
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, first, false); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, first, false, client.Collector{}); err != nil {
 		t.Fatal(err)
 	}
 	big := make([]byte, 8<<20)
 	_, _ = rand.Read(big)
-	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, big, false)
+	_, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, big, false, client.Collector{})
 	if e := apiError(t, err); e.Code != "chunk_conflict" {
 		t.Errorf("other bytes under an old number: %v", err)
 	}
-	if got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, first, false); err != nil || !got.Duplicate {
+	if got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, first, false, client.Collector{}); err != nil || !got.Duplicate {
 		t.Errorf("the same bytes again: %+v %v", got, err)
 	}
 }
@@ -543,13 +599,13 @@ func TestAnAnswerOverAMegabyteIsNotReadWhole(t *testing.T) {
 	job, _ := r.c.Jobs(context.Background(), tok)
 	pad := strings.Repeat("x", 3<<20)
 	r.svc.Reply(fakeservice.Chunk(0), 1, http.StatusCreated, `{"status":"stored","final":false,"pad":"`+pad+`"}`)
-	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a")), false)
+	got, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a")), false, client.Collector{})
 	if err == nil {
 		t.Fatalf("a 3 MiB answer was read to the end and believed: %+v", got)
 	}
 	// Under the limit the same answer is fine.
 	r.svc.Reply(fakeservice.Chunk(1), 1, http.StatusCreated, `{"status":"stored","final":false,"pad":"`+strings.Repeat("x", 1000)+`"}`)
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 1, chunkOf(t, diagnostic("b")), false); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 1, chunkOf(t, diagnostic("b")), false, client.Collector{}); err != nil {
 		t.Errorf("an answer under the limit: %v", err)
 	}
 }
@@ -564,7 +620,7 @@ func TestTheEventsTheEarlierStreamsContributeAreReadFromTheJob(t *testing.T) {
 	}
 	// The stream ends early with a checkpoint after its second event and a third that follows it: the
 	// next offer says the earlier stream contributes the two.
-	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("1"), diagnostic("b")), true); err != nil {
+	if _, err := r.c.PutChunk(context.Background(), tok, job.Stream, 0, chunkOf(t, diagnostic("a"), checkpoint("1"), diagnostic("b")), true, client.Collector{}); err != nil {
 		t.Fatal(err)
 	}
 	var next *client.Job

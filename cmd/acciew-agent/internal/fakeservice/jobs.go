@@ -50,6 +50,7 @@ type Run struct {
 	agent      string
 	attempts   int
 	chunks     [][]byte
+	reports    []Report // what each stored chunk said of the collector, in step with chunks
 	finals     map[int]bool
 	closed     bool // the last chunk is in
 	endedEarly bool // ... and carried no completion: the run is offered again, resumed
@@ -69,10 +70,15 @@ type Run struct {
 
 // pastStream is what an earlier attempt of a run left.
 type pastStream struct {
-	id     string
-	chunks [][]byte
-	finals map[int]bool
+	id      string
+	chunks  [][]byte
+	reports []Report
+	finals  map[int]bool
 }
+
+// Report is what the agent said, on a chunk, of the collector file it ran. A header it did not send is "".
+// The service takes it as said and has nothing to check it against.
+type Report struct{ SHA256, Version string }
 
 // maxAttempts is how many times a run is started before it is given up on.
 const maxAttempts = 8
@@ -211,6 +217,24 @@ func (r *Run) StreamEvents(i int) ([]*collectorv1.CollectResponse, error) {
 	}
 	r.mu.Unlock()
 	return decodeAll(chunks)
+}
+
+// Reports is what each stored chunk of the latest stream said of the collector, in the order of the chunks.
+func (r *Run) Reports() []Report { return r.StreamReports(r.Attempts() - 1) }
+
+// StreamReports is Reports for the i-th attempt's stream (from 0).
+func (r *Run) StreamReports(i int) []Report {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case i < 0:
+		return nil
+	case i < len(r.history):
+		return append([]Report(nil), r.history[i].reports...)
+	case i == len(r.history):
+		return append([]Report(nil), r.reports...)
+	}
+	return nil
 }
 
 // StreamOf is the id of the i-th attempt's stream (from 0).
@@ -419,8 +443,8 @@ func (s *Service) claim(agent string) *Run {
 	s.queue = s.queue[1:]
 	run.mu.Lock()
 	if run.attempts > 0 {
-		run.history = append(run.history, pastStream{id: run.stream, chunks: run.chunks, finals: run.finals})
-		run.chunks, run.finals, run.closed, run.endedEarly, run.heartbeat, run.moved = nil, map[int]bool{}, false, false, 0, false
+		run.history = append(run.history, pastStream{id: run.stream, chunks: run.chunks, reports: run.reports, finals: run.finals})
+		run.chunks, run.reports, run.finals, run.closed, run.endedEarly, run.heartbeat, run.moved = nil, nil, map[int]bool{}, false, false, 0, false
 		run.earlierEv += run.cpEvents
 		run.streamEv, run.cpEvents = 0, 0
 	}
@@ -635,6 +659,10 @@ func (s *Service) chunk(w http.ResponseWriter, r *http.Request, run *Run, stream
 		return
 	}
 	run.chunks = append(run.chunks, data)
+	run.reports = append(run.reports, Report{
+		SHA256:  r.Header.Get("X-Acciew-Collector-Sha256"),
+		Version: r.Header.Get("X-Acciew-Collector-Version"),
+	})
 	if info.checkpoint > 0 {
 		run.cursor = info.token
 		run.cpEvents = run.streamEv + info.checkpoint

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -289,7 +290,7 @@ func TestTheCollectorCanReadItsCredentialAndTheSearchCanFindOneInAChunk(t *testi
 		t.Fatal("the chunk is not compressed: the control would prove nothing about compression")
 	}
 	err = sess.Do(context.Background(), func(tok string) error {
-		_, err := c.PutChunk(context.Background(), tok, offered.Stream, 0, body[0], false)
+		_, err := c.PutChunk(context.Background(), tok, offered.Stream, 0, body[0], false, client.Collector{})
 		return err
 	})
 	if err != nil {
@@ -364,6 +365,31 @@ func TestOnlyTheOwnerCanReadWhatTheAgentKeepsAndTheSpoolIsGoneAfterwards(t *test
 	}
 	if entries, _ := os.ReadDir(filepath.Join(s.dir, "spool")); len(entries) != 0 {
 		t.Errorf("spool: %v", entries)
+	}
+}
+
+// The agent run from the command line says which collector file it ran, in the version it was started with.
+func TestTheRunningAgentSaysWhichCollectorFileItRan(t *testing.T) {
+	s := newSite(t, nil)
+	s.enrol()
+	run := s.svc.Queue(fakeservice.Job{Collector: "testcollector", Config: `{"mode":"ok","records":3}`})
+	s.start()
+	waitFor(t, "the job", run.Final)
+	s.stop()
+	b, err := os.ReadFile(filepath.Join(testbin.Collectors(t), "acciew-collector-testcollector"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(b)
+	want := fakeservice.Report{SHA256: hex.EncodeToString(sum[:]), Version: "0.0.1"}
+	reports := run.Reports()
+	if len(reports) == 0 {
+		t.Fatal("no chunk was stored")
+	}
+	for n, got := range reports {
+		if got != want {
+			t.Errorf("chunk %d said %+v, want %+v", n, got, want)
+		}
 	}
 }
 
