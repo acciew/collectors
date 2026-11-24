@@ -22,7 +22,7 @@ jobs:
           # baseline has to be in the clone.
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.work
           cache-dependency-path: |
@@ -96,7 +96,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v7.1.0
         with:
           go-version-file: go.work
           cache: false
